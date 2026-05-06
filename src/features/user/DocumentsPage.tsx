@@ -10,13 +10,13 @@ import {
 import { Card } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
-
+import { useNavigate } from "react-router-dom";
 import { mockGetDocuments } from "../../api/mock";
 
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<any[]>([]);
   const [search, setSearch] = useState("");
-
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -198,7 +198,7 @@ export default function DocumentsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => alert(`Viewing ${doc.filename}`)}
+                            onClick={() => navigate(`/user/documents/${doc.id}`)}
                             className="bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
                           >
                             <Eye className="w-4 h-4 mr-1" />
