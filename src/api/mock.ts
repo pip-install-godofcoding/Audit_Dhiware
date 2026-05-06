@@ -21,9 +21,12 @@ export interface AuditStatusResponse {
 
 export const mockLogin = async (email: string, _password: string) => {
   await delay(800)
-  const role = email.includes("admin") ? "admin"
-    : email.includes("auditor") ? "auditor"
-    : "user"
+  const role: "admin" | "auditor" | "user" =
+  email.includes("admin")
+    ? "admin"
+    : email.includes("auditor")
+    ? "auditor"
+    : "user";
   return {
     token: "mock-jwt-" + Date.now(),
     user: { id: "user-1", name: "Madhura Hegde", email, role }

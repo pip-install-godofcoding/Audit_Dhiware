@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-
+import LoginPage from "./features/auth/LoginPage";
 import AuditSetupPage from "./features/auditor/AuditSetupPage";
 import AuditProgressPage from "./features/auditor/AuditProgressPage";
 import FindingsReviewPage from "./features/auditor/FindingsReviewPage";
@@ -21,7 +21,7 @@ export default function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Navigate to="/auditor/setup" replace />} />
-        <Route path="/login" element={<Placeholder title="Login Page" />} />
+        <Route path="/login" element={<LoginPage />} />
         <Route path="/user/upload" element={<Placeholder title="User Upload Dashboard" />} />
         <Route path="/user/documents" element={<Placeholder title="User Documents" />} />
         <Route path="/admin/users" element={<Placeholder title="Admin — User Management" />} />

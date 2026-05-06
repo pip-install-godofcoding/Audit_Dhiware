@@ -3,6 +3,7 @@ import * as React from "react"
 export type Role = "admin" | "auditor" | "user" | null;
 
 interface User {
+  id?: string;
   name: string;
   email: string;
   role: Role;
