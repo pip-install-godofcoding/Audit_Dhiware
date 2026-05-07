@@ -1,7 +1,7 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import { Link, useLocation } from "react-router-dom"
-import { Shield, FileText, Settings, Users, LogOut, LayoutDashboard, Target } from "lucide-react"
+import { Shield, FileText, Settings, Users, LogOut, LayoutDashboard, Target, Activity } from "lucide-react"
 
 interface SidebarItem {
   name: string;
@@ -28,6 +28,7 @@ export function Sidebar({ role, onLogout }: SidebarProps) {
     { name: "Users", href: "/admin/users", icon: Users },
     { name: "Settings", href: "/admin/settings", icon: Settings },
     { name: "History", href: "/admin/history", icon: FileText },
+    { name: "System Health", href: "/admin/system-health", icon: Activity },
   ];
 
   const userLinks: SidebarItem[] = [
@@ -40,13 +41,26 @@ export function Sidebar({ role, onLogout }: SidebarProps) {
     role === "auditor" ? auditorLinks : userLinks;
 
   return (
-    <div className="flex h-screen w-64 flex-col border-r bg-background">
+    <div className="hidden md:flex h-screen w-64 flex-col border-r border-white/10 bg-slate-900">
       <div className="p-6">
-        <h2 className="text-lg font-semibold tracking-tight text-foreground flex items-center gap-2">
-          <Shield className="h-5 w-5 text-primary" />
-          TwinSecure
-        </h2>
-        <p className="text-xs text-muted-foreground mt-1 capitalize">{role} Portal</p>
+        <div className="flex items-center gap-3">
+  
+  <div className="bg-indigo-600 p-2 rounded-xl">
+    <Shield className="h-5 w-5 text-white" />
+  </div>
+
+  <div>
+    <h2 className="text-lg font-semibold tracking-tight text-white">
+      TwinSecure
+    </h2>
+
+    <p className="text-xs text-gray-400">
+      AI Audit Platform
+    </p>
+  </div>
+
+</div>
+        <p className="text-xs text-gray-400 mt-1 capitalize">{role} Portal</p>
       </div>
 
       <nav className="flex-1 space-y-1 p-4">
@@ -59,8 +73,8 @@ export function Sidebar({ role, onLogout }: SidebarProps) {
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 isActive 
-                  ? "bg-secondary text-secondary-foreground" 
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? ":bg-white/10 text-white" 
+                  : "text-gray-300 hover:bg-white/10 hover:text-white"
               )}
             >
               <item.icon className="h-4 w-4" />
@@ -73,7 +87,7 @@ export function Sidebar({ role, onLogout }: SidebarProps) {
       <div className="p-4 border-t">
         <button
           onClick={onLogout}
-          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-red-500/10 hover:text-red-400"
         >
           <LogOut className="h-4 w-4" />
           Logout

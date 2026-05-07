@@ -12,6 +12,7 @@ import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Modal } from "../../components/ui/Modal";
 
+
 export default function AdminUsersPage() {
 
   const [users, setUsers] = useState([
@@ -129,6 +130,7 @@ export default function AdminUsersPage() {
   };
 
   return (
+    
     <div className="min-h-screen bg-gray-100 px-4 py-8">
       <div className="max-w-6xl mx-auto">
 
@@ -136,11 +138,11 @@ export default function AdminUsersPage() {
         <div className="flex items-center justify-between mb-6">
 
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900">
               User Management
             </h1>
 
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-gray-500 mt-2 leading-relaxed">
               Manage users, roles, and platform access.
             </p>
           </div>
@@ -390,5 +392,6 @@ export default function AdminUsersPage() {
 
       </div>
     </div>
+    
   );
 }

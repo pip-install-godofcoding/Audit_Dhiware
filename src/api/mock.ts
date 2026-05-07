@@ -29,7 +29,7 @@ export const mockLogin = async (email: string, _password: string) => {
     : "user";
   return {
     token: "mock-jwt-" + Date.now(),
-    user: { id: "user-1", name: "Madhura Hegde", email, role }
+    user: { id: "user-1", name: email.split("@")[0], email, role }
   }
 }
 

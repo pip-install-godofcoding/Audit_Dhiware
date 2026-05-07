@@ -13,6 +13,7 @@ import { Button } from "../../components/ui/Button";
 import { useNavigate } from "react-router-dom";
 import { mockGetDocuments } from "../../api/mock";
 
+
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<any[]>([]);
   const [search, setSearch] = useState("");
@@ -21,15 +22,40 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     const loadDocuments = async () => {
-      try {
-        const data = await mockGetDocuments();
-        setDocuments(data);
-      } finally {
-        setIsLoading(false);
-      }
-    };
 
-    loadDocuments();
+  try {
+
+    const storedDocs = localStorage.getItem("allDocuments");
+
+    if (storedDocs) {
+      setDocuments(JSON.parse(storedDocs));
+      setIsLoading(false);
+      return;
+    }
+
+    const mockDocs = await mockGetDocuments();
+
+    localStorage.setItem(
+      "allDocuments",
+      JSON.stringify(mockDocs)
+    );
+
+    setDocuments(mockDocs);
+
+  } catch (error) {
+
+    console.error(error);
+
+  } finally {
+
+    setIsLoading(false);
+
+  }
+};
+
+loadDocuments();
+
+loadDocuments();
   }, []);
 
   const filteredDocuments = useMemo(() => {
@@ -47,24 +73,43 @@ export default function DocumentsPage() {
       );
     }
 
+
     return (
       <span className="bg-yellow-100 text-yellow-700 text-xs px-2 py-1 rounded-full">
         Processing
       </span>
     );
   };
+  const handleDelete = (id: string) => {
+    if (!window.confirm("Delete this document?")) return;
+  const updatedDocs = documents.filter(
+    (doc) => doc.id !== id
+  );
+
+  setDocuments(updatedDocs);
+
+  const uploadedDocs = updatedDocs.filter(
+    (doc) => doc.id.toString().includes("doc-")
+  );
+
+  localStorage.setItem(
+    "uploadedDocs",
+    JSON.stringify(uploadedDocs)
+  );
+};
 
   return (
+    
     <div className="min-h-screen bg-gray-100 px-4 py-8">
       <div className="max-w-6xl mx-auto">
 
         {/* HEADER */}
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900">
             My Documents
           </h1>
 
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-gray-500 mt-2 leading-relaxed">
             Manage uploaded documents and audit evidence.
           </p>
         </div>
@@ -198,7 +243,11 @@ export default function DocumentsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => navigate(`/user/documents/${doc.id}`)}
+                            onClick={() =>
+  navigate(`/user/documents/${doc.id}`, {
+    state: { document: doc },
+  })
+}
                             className="bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
                           >
                             <Eye className="w-4 h-4 mr-1" />
@@ -208,7 +257,7 @@ export default function DocumentsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => alert(`Deleting ${doc.filename}`)}
+                            onClick={() => handleDelete(doc.id)}
                             className="bg-white text-red-600 border border-red-200 hover:bg-red-50"
                           >
                             <Trash2 className="w-4 h-4 mr-1" />
@@ -262,5 +311,6 @@ export default function DocumentsPage() {
 
       </div>
     </div>
+
   );
 }

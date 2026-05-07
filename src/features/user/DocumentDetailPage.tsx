@@ -10,23 +10,30 @@ import {
 
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
+import { useLocation, useParams } from "react-router-dom";
+
 
 export default function DocumentDetailPage() {
+    const location = useLocation();
+    const { id } = useParams();
+const storedDocs = JSON.parse(
+  localStorage.getItem("allDocuments") || "[]"
+);
 
-  const document = {
-    id: "doc-1",
-    filename: "vendor_contract_2026.pdf",
-    type: "PDF",
-    size: "1.2 MB",
-    uploadedAt: "2026-05-12",
-    uploadedBy: "Ganavi MC",
-    maskingStatus: "Completed",
-    indexingStatus: "Indexed",
-    auditUsage: [
-      "ISO 27001 Compliance Audit",
-      "SOC2 Readiness Review",
-    ],
-  };
+const document =
+  location.state?.document ||
+  storedDocs.find((doc: any) => doc.id === id);
+if (!document) {
+  return (
+
+      <div className="p-6 text-gray-700">
+        Document not found.
+      </div>
+    
+  );
+}
+   
+  
 
   const timeline = [
     {
@@ -56,6 +63,7 @@ export default function DocumentDetailPage() {
   ];
 
   return (
+    
     <div className="min-h-screen bg-gray-100 px-4 py-8">
       <div className="max-w-5xl mx-auto">
 
@@ -63,11 +71,11 @@ export default function DocumentDetailPage() {
         <div className="flex items-start justify-between mb-6">
 
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900">
               Document Details
             </h1>
 
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-gray-500 mt-2 leading-relaxed">
               Monitor document lifecycle, indexing, and audit usage.
             </p>
           </div>
@@ -99,7 +107,7 @@ export default function DocumentDetailPage() {
                   </h2>
 
                   <p className="text-sm text-gray-500 mt-1">
-                    Uploaded by {document.uploadedBy}
+                    Uploaded by {document.uploadedBy || "System User"}
                   </p>
                 </div>
 
@@ -117,7 +125,7 @@ export default function DocumentDetailPage() {
                   </p>
 
                   <p className="text-sm font-medium text-gray-800 mt-1">
-                    {document.type}
+                    {document.type || "Unknown"}
                   </p>
                 </div>
 
@@ -127,7 +135,7 @@ export default function DocumentDetailPage() {
                   </p>
 
                   <p className="text-sm font-medium text-gray-800 mt-1">
-                    {document.size}
+                    {document.size || "Unknown"}
                   </p>
                 </div>
 
@@ -147,7 +155,7 @@ export default function DocumentDetailPage() {
                   </p>
 
                   <p className="text-sm font-medium text-green-600 mt-1">
-                    {document.indexingStatus}
+                    {document.indexingStatus || "Indexed"}
                   </p>
                 </div>
 
@@ -227,7 +235,7 @@ export default function DocumentDetailPage() {
 
           <div className="space-y-3">
 
-            {document.auditUsage.map((audit, index) => (
+            {(document.auditUsage || []).map((audit: string, index: number) => (
               <div
                 key={index}
                 className="flex items-center justify-between border border-gray-200 rounded-xl px-4 py-3"

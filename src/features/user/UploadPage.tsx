@@ -4,6 +4,7 @@ import { Upload, FileText, CheckCircle2 } from "lucide-react";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { mockUploadDocument } from "../../api/mock";
+import { useNavigate } from "react-router-dom";
 
 export default function UploadPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -32,7 +33,7 @@ export default function UploadPage() {
 
     setSelectedFile(file);
   };
-
+  const navigate = useNavigate();
   const handleUpload = async () => {
     if (!selectedFile) return;
 
@@ -57,6 +58,19 @@ export default function UploadPage() {
       setUploadProgress(100);
 
       setUploadedDoc(response);
+      const existingDocs = JSON.parse(
+  localStorage.getItem("allDocuments") || "[]"
+);
+
+const updatedDocs = [response, ...existingDocs];
+
+localStorage.setItem(
+  "allDocuments",
+  JSON.stringify(updatedDocs)
+);
+      setTimeout(() => {
+    navigate("/user/documents");
+}, 1200);
 
     } catch (err) {
       setError("Upload failed.");
@@ -66,16 +80,16 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 px-4 py-8">
+    <div className="space-y-6">
       <div className="max-w-4xl mx-auto">
 
         {/* HEADER */}
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900">
             Upload Documents
           </h1>
 
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-gray-500 mt-2 leading-relaxed">
             Upload files for audit processing and semantic indexing.
           </p>
         </div>
@@ -195,5 +209,6 @@ export default function UploadPage() {
 
       </div>
     </div>
+    
   );
 }

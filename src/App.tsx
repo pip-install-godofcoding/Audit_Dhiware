@@ -6,6 +6,9 @@ import DocumentsPage from "./features/user/DocumentsPage";
 import DocumentDetailPage from "./features/user/DocumentDetailPage";
 import AdminUsersPage from "./features/admin/AdminUsersPage";
 import AdminSettingsPage from "./features/admin/AdminSettingsPage";
+import AdminAuditHistoryPage from "./features/admin/AdminAuditHistoryPage";
+import AdminSystemHealthPage from "./features/admin/AdminSystemHealthPage";
+import { ProtectedRoute } from "./components/layout/ProtectedRoute";
 import AuditSetupPage from "./features/auditor/AuditSetupPage";
 import AuditProgressPage from "./features/auditor/AuditProgressPage";
 import FindingsReviewPage from "./features/auditor/FindingsReviewPage";
@@ -25,21 +28,61 @@ export default function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<Navigate to="/auditor/setup" replace />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/user/upload" element={<UploadPage />} />
-        <Route path="/user/documents" element={<DocumentsPage />} />
-        <Route path="/user/documents/:id" element={<DocumentDetailPage />} />
-        <Route path="/admin/users" element={<AdminUsersPage />} />
-        <Route path="/admin/settings" element={<AdminSettingsPage />} />
-        
-        <Route path="/auditor/setup" element={<AuditSetupPage />} />
-        <Route path="/auditor/progress" element={<AuditProgressPage />} />
-        <Route path="/auditor/findings" element={<FindingsReviewPage />} />
-        <Route path="/auditor/report" element={<ReportViewerPage />} />
-        
-        <Route path="*" element={<Navigate to="/auditor/setup" replace />} />
-      </Routes>
+
+  {/* ROOT */}
+  <Route
+    path="/"
+    element={<Navigate to="/login" replace />}
+  />
+
+  {/* PUBLIC */}
+  <Route
+    path="/login"
+    element={<LoginPage />}
+  />
+
+  {/* USER ROUTES */}
+  <Route
+    element={<ProtectedRoute allowedRoles={["user"]} />}
+  >
+    <Route path="/user/upload" element={<UploadPage />} />
+    <Route path="/user/documents" element={<DocumentsPage />} />
+    <Route
+      path="/user/documents/:id"
+      element={<DocumentDetailPage />}
+    />
+  </Route>
+
+  {/* ADMIN ROUTES */}
+  <Route
+    element={<ProtectedRoute allowedRoles={["admin"]} />}
+  >
+    <Route path="/admin/users" element={<AdminUsersPage />} />
+    <Route path="/admin/settings" element={<AdminSettingsPage />} />
+    <Route path="/admin/history" element={<AdminAuditHistoryPage />} />
+    <Route
+      path="/admin/system-health"
+      element={<AdminSystemHealthPage />}
+    />
+  </Route>
+
+  {/* AUDITOR ROUTES */}
+  <Route
+    element={<ProtectedRoute allowedRoles={["auditor"]} />}
+  >
+    <Route path="/auditor/setup" element={<AuditSetupPage />} />
+    <Route path="/auditor/progress" element={<AuditProgressPage />} />
+    <Route path="/auditor/findings" element={<FindingsReviewPage />} />
+    <Route path="/auditor/report" element={<ReportViewerPage />} />
+  </Route>
+
+  {/* FALLBACK */}
+  <Route
+    path="*"
+    element={<Navigate to="/login" replace />}
+  />
+
+</Routes>
       <AuditorChatbot />
     </Router>
   );
