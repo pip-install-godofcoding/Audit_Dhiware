@@ -1,44 +1,53 @@
-from datetime import datetime
-from typing import Optional, List, Any, Dict
-from pydantic import BaseModel, EmailStr, UUID4
-from models import UserRole, MaskingStatus, AuditStatus, FindingSeverity, FindingStatus, ReviewStatus
+"""
+Pydantic v2 schemas — exact JSON shapes matching backend_contracts.md and frontend expectations.
+All camelCase field names match what the React frontend sends/receives.
+"""
+from __future__ import annotations
+from typing import Optional
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
-# ── Auth ───────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+# AUTH
+# ═══════════════════════════════════════════════════════════════════════════
+
 class LoginRequest(BaseModel):
-    email: str
+    email: EmailStr
     password: str
 
 
-class UserOut(BaseModel):
-    id: UUID4
+class UserResponse(BaseModel):
+    id: str
     name: str
     email: str
-    role: UserRole
+    role: str  # "admin" | "auditor" | "user"
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LoginResponse(BaseModel):
     token: str
-    user: UserOut
+    user: UserResponse
 
 
-# ── Documents ──────────────────────────────────────────────────────────────
-class DocumentOut(BaseModel):
-    id: UUID4
+# ═══════════════════════════════════════════════════════════════════════════
+# DOCUMENTS
+# ═══════════════════════════════════════════════════════════════════════════
+
+class DocumentResponse(BaseModel):
+    id: str
     filename: str
     fileType: str
-    size: Optional[str] = None
+    size: str
     uploadedAt: str
     maskingStatus: str
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
     @classmethod
-    def from_orm_doc(cls, doc) -> "DocumentOut":
+    def from_orm_doc(cls, doc) -> DocumentResponse:
         return cls(
-            id=doc.id,
+            id=str(doc.id),
             filename=doc.filename,
             fileType=doc.file_type,
             size=doc.size_human or "Unknown",
@@ -47,24 +56,24 @@ class DocumentOut(BaseModel):
         )
 
 
-class UploadResponse(BaseModel):
-    id: UUID4
-    filename: str
-    maskingStatus: str
-    uploadedAt: str
+class DocumentUploadResponse(DocumentResponse):
+    pass
 
 
-# ── Audits ─────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+# AUDITS
+# ═══════════════════════════════════════════════════════════════════════════
+
 class AuditOptions(BaseModel):
-    adversarialDebate: bool = False
-    confidenceDecay: bool = False
+    adversarialDebate: bool = True
+    confidenceDecay: bool = True
     confidenceThreshold: float = 0.75
-    controlDomains: Dict[str, bool] = {}
+    controlDomains: dict[str, bool] = {}
 
 
 class RunAuditRequest(BaseModel):
-    documentIds: List[str]
-    frameworks: List[str]
+    documentIds: list[str]
+    frameworks: list[str]
     options: AuditOptions
 
 
@@ -85,70 +94,147 @@ class AuditStatusResponse(BaseModel):
     findingsCount: int
 
 
-# ── Findings ───────────────────────────────────────────────────────────────
-class EvidenceContext(BaseModel):
-    ragCitations: List[Dict[str, Any]] = []
-    debateTranscript: Optional[str] = None
+# ═══════════════════════════════════════════════════════════════════════════
+# FINDINGS
+# ═══════════════════════════════════════════════════════════════════════════
+
+class EvidenceChunk(BaseModel):
+    id: str
+    sourceDoc: str
+    section: str
+    page: int
+    text: str
 
 
-class FindingOut(BaseModel):
-    id: UUID4
-    auditId: UUID4
+class DebatePoint(BaseModel):
+    side: str  # "prosecutor" | "defender"
+    points: list[str]
+
+
+class JudgeVerdict(BaseModel):
+    confidence: float
+    verdict: str
+    decisiveEvidence: str
+
+
+class FindingResponse(BaseModel):
+    id: str
     controlId: str
     controlName: str
     severity: str
     status: str
     reviewStatus: str
     confidence: float
-    frameworks: List[str] = []
-    source: Optional[str] = None
-    remediation: Optional[str] = None
-    auditorComment: Optional[str] = None
-    evidenceContext: Optional[Dict[str, Any]] = None
+    frameworks: list[str]
+    evidenceChunks: list[EvidenceChunk]
+    prosecutorArgs: list[str]
+    defenderArgs: list[str]
+    judgeVerdict: JudgeVerdict | None
+    remediation: str
+    source: str
+    auditorComment: str | None
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_orm_finding(cls, f) -> FindingResponse:
+        """Build FindingResponse from ORM Finding, unpacking evidence_context_json."""
+        ctx = f.evidence_context_json or {}
+        rag_citations = ctx.get("ragCitations", [])
+        debate = ctx.get("debateTranscript", "")
+
+        evidence_chunks = [
+            EvidenceChunk(
+                id=str(i),
+                sourceDoc=c.get("sourceDoc", "Unknown"),
+                section=c.get("section", ""),
+                page=c.get("page", 0),
+                text=c.get("text", ""),
+            )
+            for i, c in enumerate(rag_citations)
+        ]
+
+        # Parse debate transcript into prosecutor/defender args
+        prosecutor_args = ctx.get("prosecutorArgs", [])
+        defender_args = ctx.get("defenderArgs", [])
+
+        judge = None
+        judge_data = ctx.get("judgeVerdict")
+        if judge_data:
+            judge = JudgeVerdict(
+                confidence=judge_data.get("confidence", f.confidence),
+                verdict=judge_data.get("verdict", f.ai_status.value),
+                decisiveEvidence=judge_data.get("decisiveEvidence", ""),
+            )
+
+        return cls(
+            id=str(f.id),
+            controlId=f.control_id,
+            controlName=f.control_name,
+            severity=f.ai_severity.value,
+            status=f.ai_status.value,
+            reviewStatus=f.review_status.value,
+            confidence=f.confidence,
+            frameworks=f.frameworks or [],
+            evidenceChunks=evidence_chunks,
+            prosecutorArgs=prosecutor_args,
+            defenderArgs=defender_args,
+            judgeVerdict=judge,
+            remediation=f.remediation or "",
+            source=f.source or "",
+            auditorComment=f.auditor_comment,
+        )
 
 
 class UpdateFindingRequest(BaseModel):
-    reviewStatus: ReviewStatus
-    severity: Optional[FindingSeverity] = None
-    comment: Optional[str] = None
+    reviewStatus: str
+    severity: str | None = None
+    comment: str | None = None
 
 
 class UpdateFindingResponse(BaseModel):
     findingId: str
     reviewStatus: str
-    severity: Optional[str] = None
-    comment: Optional[str] = None
+    severity: str | None = None
+    comment: str | None = None
     updatedAt: str
 
 
-# ── Admin / Users ──────────────────────────────────────────────────────────
-class AdminUserOut(BaseModel):
-    id: UUID4
+# ═══════════════════════════════════════════════════════════════════════════
+# ADMIN
+# ═══════════════════════════════════════════════════════════════════════════
+
+class UserListItem(BaseModel):
+    id: str
     name: str
     email: str
-    role: UserRole
-    is_active: bool
-    created_at: Optional[datetime] = None
-    last_active: Optional[datetime] = None
+    role: str
+    isActive: bool
+    lastActive: str | None
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_orm_user(cls, u) -> UserListItem:
+        return cls(
+            id=str(u.id),
+            name=u.name,
+            email=u.email,
+            role=u.role.value,
+            isActive=u.is_active,
+            lastActive=u.last_active.isoformat() if u.last_active else None,
+        )
 
 
-class InviteUserRequest(BaseModel):
+class CreateUserRequest(BaseModel):
     name: str
     email: EmailStr
-    role: UserRole
     password: str
+    role: str
 
 
-# ── System Health ──────────────────────────────────────────────────────────
 class SystemHealthResponse(BaseModel):
+    services: dict[str, str]  # service_name -> "healthy"|"degraded"|"down"
     ragLatencyMs: float
-    llmTokensUsed: int
+    llmTokenUsage: int
     activeAuditJobs: int
-    totalDocuments: int
-    totalFindings: int
-    dbStatus: str
-    redisStatus: str

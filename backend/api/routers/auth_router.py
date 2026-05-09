@@ -8,7 +8,7 @@ from datetime import datetime
 
 from database import get_db
 from models import User
-from schemas import LoginRequest, LoginResponse, UserOut
+from schemas import LoginRequest, LoginResponse, UserResponse
 from auth import verify_password, create_access_token
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -37,5 +37,10 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     token = create_access_token({"sub": str(user.id), "role": user.role.value})
     return LoginResponse(
         token=token,
-        user=UserOut(id=user.id, name=user.name, email=user.email, role=user.role),
+        user=UserResponse(
+            id=str(user.id),
+            name=user.name,
+            email=user.email,
+            role=user.role.value,
+        ),
     )

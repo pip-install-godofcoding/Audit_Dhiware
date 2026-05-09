@@ -7,7 +7,7 @@ from sqlalchemy import select, update
 from datetime import datetime
 
 from database import get_db
-from models import User, Finding
+from models import User, Finding, ReviewStatus, FindingSeverity
 from schemas import UpdateFindingRequest, UpdateFindingResponse
 from auth import require_role
 
@@ -27,12 +27,12 @@ async def update_finding(
         raise HTTPException(status_code=404, detail="Finding not found")
 
     updates = {
-        "review_status": body.reviewStatus,
+        "review_status": ReviewStatus(body.reviewStatus),
         "reviewed_at": datetime.utcnow(),
         "reviewed_by": current_user.id,
     }
     if body.severity:
-        updates["auditor_severity"] = body.severity
+        updates["auditor_severity"] = FindingSeverity(body.severity)
     if body.comment:
         updates["auditor_comment"] = body.comment
 
@@ -41,8 +41,8 @@ async def update_finding(
 
     return UpdateFindingResponse(
         findingId=finding_id,
-        reviewStatus=body.reviewStatus.value,
-        severity=body.severity.value if body.severity else None,
+        reviewStatus=body.reviewStatus,
+        severity=body.severity,
         comment=body.comment,
         updatedAt=datetime.utcnow().isoformat(),
     )

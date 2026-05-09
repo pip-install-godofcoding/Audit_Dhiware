@@ -13,7 +13,7 @@ from datetime import datetime
 
 from database import get_db
 from models import User, Document, MaskingStatus
-from schemas import DocumentOut, UploadResponse
+from schemas import DocumentResponse, DocumentUploadResponse
 from auth import get_current_user
 from config import settings
 from minio import Minio
@@ -32,7 +32,7 @@ def get_minio():
     )
 
 
-@router.get("", response_model=list[DocumentOut])
+@router.get("", response_model=list[DocumentResponse])
 async def list_documents(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -41,10 +41,10 @@ async def list_documents(
         select(Document).order_by(Document.uploaded_at.desc())
     )
     docs = result.scalars().all()
-    return [DocumentOut.from_orm_doc(d) for d in docs]
+    return [DocumentResponse.from_orm_doc(d) for d in docs]
 
 
-@router.post("/upload", response_model=UploadResponse, status_code=201)
+@router.post("/upload", response_model=DocumentUploadResponse, status_code=201)
 async def upload_document(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
@@ -92,8 +92,8 @@ async def upload_document(
 
     # Dispatch to ingest microservice (async HTTP call)
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.post(
+        async with httpx.AsyncClient(timeout=10.0) as http_client:
+            await http_client.post(
                 f"{settings.ingest_service_url}/ingest",
                 json={
                     "document_id": str(doc.id),
@@ -104,10 +104,4 @@ async def upload_document(
     except Exception:
         pass  # Ingest runs async; failure is logged by the ingest service
 
-    return UploadResponse(
-        id=doc.id,
-        filename=doc.filename,
-        maskingStatus=doc.masking_status.value,
-        uploadedAt=doc.uploaded_at.strftime("%Y-%m-%d"),
-    )
-
+    return DocumentUploadResponse.from_orm_doc(doc)
