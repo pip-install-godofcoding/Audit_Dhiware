@@ -12,6 +12,7 @@ from routers.documents_router import router as documents_router
 from routers.audits_router import router as audits_router
 from routers.findings_router import router as findings_router
 from routers.admin_router import router as admin_router
+from routers.copilot_router import router as copilot_router
 
 log = structlog.get_logger()
 
@@ -45,6 +46,7 @@ app.include_router(documents_router)
 app.include_router(audits_router)
 app.include_router(findings_router)
 app.include_router(admin_router)
+app.include_router(copilot_router)
 
 
 @app.get("/health", tags=["health"])
