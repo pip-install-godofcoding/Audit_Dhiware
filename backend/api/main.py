@@ -6,13 +6,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-
-from routers.auth_router import router as auth_router
-from routers.documents_router import router as documents_router
-from routers.audits_router import router as audits_router
-from routers.findings_router import router as findings_router
-from routers.admin_router import router as admin_router
-from routers.copilot_router import router as copilot_router
+from routers import auth, documents, audits, findings, admin, copilot
 
 log = structlog.get_logger()
 
@@ -34,21 +28,21 @@ app = FastAPI(
 # ── CORS — allow the React dev server ─────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "*"],
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ── Register Routers ───────────────────────────────────────────────────────
-app.include_router(auth_router)
-app.include_router(documents_router)
-app.include_router(audits_router)
-app.include_router(findings_router)
-app.include_router(admin_router)
-app.include_router(copilot_router)
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
+app.include_router(audits.router, prefix="/api/v1/audits", tags=["audits"])
+app.include_router(findings.router, prefix="/api/v1", tags=["findings"])
+app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
+app.include_router(copilot.router, prefix="/api/v1/copilot", tags=["copilot"])
 
 
 @app.get("/health", tags=["health"])
-async def health_check():
+async def health():
     return {"status": "ok", "service": "compliance-api"}

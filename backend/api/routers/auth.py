@@ -1,17 +1,20 @@
 """
-Router: POST /api/v1/auth/login
+POST /api/v1/auth/login
+- Verify email + password against users table
+- Return JWT + user object matching LoginResponse schema exactly
+- If invalid: 401 with detail "Invalid credentials"
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from datetime import datetime
 
 from database import get_db
 from models import User
-from schemas import LoginRequest, LoginResponse, UserResponse
 from auth import verify_password, create_access_token
+from schemas import LoginRequest, LoginResponse, UserResponse
 
-router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+router = APIRouter()
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -20,10 +23,7 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(body.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
-        )
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is disabled")
