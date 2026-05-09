@@ -3,7 +3,7 @@ import { Upload, FileText, CheckCircle2 } from "lucide-react";
 
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
-import { mockUploadDocument } from "../../api/mock";
+import { mockUploadDocument } from "../../api";
 import { useNavigate } from "react-router-dom";
 
 export default function UploadPage() {

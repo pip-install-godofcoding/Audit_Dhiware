@@ -11,7 +11,7 @@ import { Card } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
 import { useNavigate } from "react-router-dom";
-import { mockGetDocuments } from "../../api/mock";
+import { mockGetDocuments } from "../../api";
 
 
 export default function DocumentsPage() {

@@ -7,7 +7,7 @@ import Checkbox from "../../components/ui/Checkbox";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 
-import { mockLogin } from "../../api/mock";
+import { mockLogin } from "../../api";
 import { useAuth } from "../../context/AuthContext";
 
 export default function LoginPage() {

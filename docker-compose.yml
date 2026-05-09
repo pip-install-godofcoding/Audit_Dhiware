@@ -42,19 +42,10 @@ services:
     ports: ["11434:11434"]
     volumes:
       - ollama_models:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    # Pull the model on first start
     entrypoint: >
       sh -c "ollama serve &
              sleep 5 &&
              ollama pull mistral &&
-             ollama pull llama3.1 &&
              wait"
 
   api:
