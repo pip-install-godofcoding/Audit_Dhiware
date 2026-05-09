@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     embedding_model: str = "BAAI/bge-m3"
 
+    # Ingest microservice
+    ingest_service_url: str = "http://ingest:8001"
+
     # Chunking
     max_chunk_size: int = 500
     chunk_overlap: int = 50

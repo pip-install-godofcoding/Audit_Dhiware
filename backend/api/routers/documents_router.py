@@ -5,6 +5,7 @@ Routers:
 """
 import uuid
 import io
+import httpx
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -14,7 +15,6 @@ from database import get_db
 from models import User, Document, MaskingStatus
 from schemas import DocumentOut, UploadResponse
 from auth import get_current_user
-from worker import ingest_document_task
 from config import settings
 from minio import Minio
 
@@ -90,8 +90,19 @@ async def upload_document(
     await db.commit()
     await db.refresh(doc)
 
-    # Kick off background ingest (PII masking + embedding)
-    ingest_document_task.delay(str(doc.id), s3_key, ext)
+    # Dispatch to ingest microservice (async HTTP call)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(
+                f"{settings.ingest_service_url}/ingest",
+                json={
+                    "document_id": str(doc.id),
+                    "s3_key": s3_key,
+                    "file_type": ext,
+                },
+            )
+    except Exception:
+        pass  # Ingest runs async; failure is logged by the ingest service
 
     return UploadResponse(
         id=doc.id,
@@ -99,3 +110,4 @@ async def upload_document(
         maskingStatus=doc.masking_status.value,
         uploadedAt=doc.uploaded_at.strftime("%Y-%m-%d"),
     )
+

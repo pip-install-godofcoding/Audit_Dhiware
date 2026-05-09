@@ -49,9 +49,10 @@ services:
       OPA_URL: http://opa:8181
       SECRET_KEY: super-secret-jwt-key-change-in-production
       CELERY_BROKER_URL: redis://redis:6379/1
+      INGEST_SERVICE_URL: http://ingest:8001
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       EMBEDDING_MODEL: BAAI/bge-m3
-    depends_on: [postgres, redis, minio, opa]
+    depends_on: [postgres, redis, minio, opa, ingest]
     volumes:
       - ./backend/api:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -74,7 +75,23 @@ services:
       - ./backend/api:/app
     command: celery -A worker.celery_app worker --loglevel=info --concurrency=2
 
+  ingest:
+    build: ./backend/ingest-service
+    ports: ["8001:8001"]
+    environment:
+      DATABASE_URL: postgresql://compliance:compliance_secret@postgres:5432/compliance_db
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: compliance-docs
+      EMBEDDING_MODEL: BAAI/bge-m3
+    depends_on: [postgres, minio]
+    volumes:
+      - ./backend/ingest-service:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+
 volumes:
   pgdata:
   redisdata:
   miniodata:
+
