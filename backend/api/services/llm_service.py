@@ -1,39 +1,117 @@
 """
-LLM Service — OpenAI GPT-4o powered compliance analysis.
+LLM Service — Local inference via Ollama / vLLM (OpenAI-compatible API).
+
+No API keys. No mocks. Fully local.
+
+Models used:
+  - Mistral (7B): Prosecutor, Defender, Classifier — fast, good instruction following
+  - Llama 3.1 (8B): Judge — stronger reasoning for final verdicts
+
+All calls go through the OpenAI-compatible /v1/chat/completions endpoint
+exposed by Ollama at http://ollama:11434/v1
 
 Three capabilities:
-  1. classify_control  — Evaluate evidence against a control → status/confidence
+  1. classify_control  — Evaluate evidence against a control
   2. run_adversarial_debate — Prosecutor + Defender + Judge tribunal
   3. copilot_chat — Auditor assistant chatbot
-
-Falls back to deterministic mocks when OPENAI_API_KEY is not set.
 """
 import asyncio
 import json
-import random
+import re
 import structlog
+import httpx
 
-from openai import AsyncOpenAI
 from config import settings
 
 log = structlog.get_logger()
 
-client = AsyncOpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
+# Timeout for local LLM calls (can be slow on CPU)
+LLM_TIMEOUT = 120.0
+
+
+async def _call_llm(
+    prompt: str,
+    model: str | None = None,
+    system_prompt: str | None = None,
+    temperature: float = 0.1,
+    max_tokens: int = 1024,
+    json_mode: bool = False,
+) -> str:
+    """
+    Call the local LLM via OpenAI-compatible chat completions API.
+    Works with Ollama, vLLM, llama.cpp, LocalAI, or any OpenAI-compatible server.
+    """
+    model = model or settings.llm_model
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    body = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+
+    if json_mode:
+        body["format"] = "json"
+
+    async with httpx.AsyncClient(timeout=LLM_TIMEOUT) as client:
+        response = await client.post(
+            f"{settings.llm_base_url}/chat/completions",
+            json=body,
+            headers={"Content-Type": "application/json"},
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    return data["choices"][0]["message"]["content"]
+
+
+def _extract_json(text: str) -> dict:
+    """
+    Robustly extract JSON from LLM output.
+    Handles cases where the model wraps JSON in markdown code blocks.
+    """
+    # Try direct parse first
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Try extracting from ```json ... ``` blocks
+    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # Try finding first { ... } block
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    log.warning("json_extraction_failed", text_preview=text[:200])
+    return {}
 
 
 class LLMService:
-    """GPT-4o powered compliance intelligence with mock fallback."""
+    """Local LLM powered compliance intelligence — no API keys required."""
 
     # ── 1. Control Classification ──────────────────────────────────────────
 
     async def classify_control(self, control: dict, chunks: list[dict]) -> dict:
         """
-        Evaluate retrieved evidence against a compliance control.
+        Evaluate retrieved evidence against a compliance control using local LLM.
         Returns: {status, confidence, source, remediation}
         """
-        if not client:
-            return self._mock_classification(control, chunks)
-
         context = "\n\n".join([
             f"[Source: {c['filename']} — {c['section_ref']}, Page {c['page_number']}]\n{c['chunk_text']}"
             for c in chunks
@@ -50,10 +128,10 @@ EVIDENCE RETRIEVED FROM DOCUMENTS:
 Evaluate whether the evidence satisfies this control.
 Respond ONLY with valid JSON in this exact format:
 {{
-  "status": "covered" | "partial" | "gap" | "stale",
-  "confidence": 0.0-1.0,
+  "status": "covered" or "partial" or "gap" or "stale",
+  "confidence": a number between 0.0 and 1.0,
   "source": "document name and section that most directly addresses this control",
-  "remediation": "plain English remediation if status is not covered, else null"
+  "remediation": "plain English remediation if status is not covered, otherwise null"
 }}
 
 Rules:
@@ -61,38 +139,56 @@ Rules:
 - partial: Some evidence exists but incomplete or ambiguous
 - gap: Required by framework, no relevant evidence found
 - stale: Evidence exists but is more than 12 months old
-- confidence must reflect actual evidence quality, not just a guess
+- confidence must reflect actual evidence quality
 - remediation must be specific and actionable, max 2 sentences"""
 
         try:
-            response = await client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}],
+            raw = await _call_llm(
+                prompt=prompt,
+                model=settings.llm_model,
                 temperature=0.1,
-                response_format={"type": "json_object"},
+                json_mode=True,
             )
-            raw = response.choices[0].message.content
-            result = json.loads(raw)
-            log.info("llm_classification", control=control["id"], status=result.get("status"))
-            return result
+            result = _extract_json(raw)
+
+            # Validate and ensure required fields
+            status = result.get("status", "partial")
+            if status not in ("covered", "partial", "gap", "stale"):
+                status = "partial"
+
+            confidence = float(result.get("confidence", 0.5))
+            confidence = max(0.0, min(1.0, confidence))
+
+            log.info("llm_classification", control=control["id"], status=status, model=settings.llm_model)
+
+            return {
+                "status": status,
+                "confidence": confidence,
+                "source": result.get("source", chunks[0]["filename"] if chunks else "Unknown"),
+                "remediation": result.get("remediation"),
+            }
+
         except Exception as e:
             log.error("llm_classification_failed", control=control["id"], error=str(e))
-            return self._mock_classification(control, chunks)
+            # Deterministic fallback — classify as gap so it gets flagged for human review
+            return {
+                "status": "partial",
+                "confidence": 0.5,
+                "source": chunks[0]["filename"] if chunks else "LLM unavailable",
+                "remediation": f"LLM evaluation failed. Manual review required for {control['name']}.",
+            }
 
     # ── 2. Adversarial Debate ──────────────────────────────────────────────
 
     async def run_adversarial_debate(self, control: dict, chunks: list[dict]) -> dict:
         """
-        Three-agent adversarial tribunal:
-          - Prosecutor: argues the control is NOT met
-          - Defender: argues the control IS met
-          - Judge: weighs arguments and delivers verdict
+        Three-agent adversarial tribunal using local LLMs:
+          - Prosecutor (Mistral): argues the control is NOT met
+          - Defender (Mistral): argues the control IS met
+          - Judge (Llama 3.1): weighs arguments and delivers verdict
 
-        Returns: {prosecutorArgs, defenderArgs, judgeVerdict}
+        Prosecutor and Defender run in parallel for speed.
         """
-        if not client:
-            return self._mock_debate(control)
-
         context = "\n\n".join([
             f"[{c['filename']} — {c['section_ref']}]\n{c['chunk_text']}"
             for c in chunks
@@ -119,143 +215,122 @@ Respond with JSON: {{"points": ["point 1", "point 2"]}}
 Maximum 4 bullet points. Be specific. Do not invent evidence."""
 
         try:
-            p_resp, d_resp = await asyncio.gather(
-                client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": prosecutor_prompt}],
-                    temperature=0.2,
-                    response_format={"type": "json_object"},
-                ),
-                client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": defender_prompt}],
-                    temperature=0.2,
-                    response_format={"type": "json_object"},
-                ),
+            # Run Prosecutor and Defender in parallel on Mistral
+            p_raw, d_raw = await asyncio.gather(
+                _call_llm(prosecutor_prompt, model=settings.llm_model, temperature=0.2, json_mode=True),
+                _call_llm(defender_prompt, model=settings.llm_model, temperature=0.2, json_mode=True),
             )
 
-            prosecutor_args = json.loads(p_resp.choices[0].message.content)["points"]
-            defender_args = json.loads(d_resp.choices[0].message.content)["points"]
+            p_data = _extract_json(p_raw)
+            d_data = _extract_json(d_raw)
 
-            # ── Judge evaluates both sides ─────────────────────────────────
+            prosecutor_args = p_data.get("points", ["No arguments generated"])
+            defender_args = d_data.get("points", ["No arguments generated"])
+
+            # ── Judge evaluates both sides (Llama 3.1 — heavier model) ─────
 
             judge_prompt = f"""You are the JUDGE in a compliance audit tribunal.
 Control: {control['id']} — {control['name']}
-PROSECUTOR says: {prosecutor_args}
-DEFENDER says: {defender_args}
+Requirement: {control['description']}
 
-Weigh both arguments and deliver your verdict.
+PROSECUTOR argues control is NOT met:
+{json.dumps(prosecutor_args, indent=2)}
+
+DEFENDER argues control IS met:
+{json.dumps(defender_args, indent=2)}
+
+Weigh both arguments carefully and deliver your verdict.
 Respond with JSON:
 {{
-  "confidence": 0.0-1.0,
-  "verdict": "covered"|"partial"|"gap"|"stale",
+  "confidence": a number between 0.0 and 1.0,
+  "verdict": "covered" or "partial" or "gap" or "stale",
   "decisiveEvidence": "the single most decisive piece of evidence or its absence"
 }}"""
 
-            j_resp = await client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": judge_prompt}],
+            j_raw = await _call_llm(
+                judge_prompt,
+                model=settings.llm_judge_model,
                 temperature=0.1,
-                response_format={"type": "json_object"},
+                json_mode=True,
             )
-            judge_data = json.loads(j_resp.choices[0].message.content)
+            judge_data = _extract_json(j_raw)
+
+            verdict = judge_data.get("verdict", "partial")
+            if verdict not in ("covered", "partial", "gap", "stale"):
+                verdict = "partial"
+
+            confidence = float(judge_data.get("confidence", 0.6))
+            confidence = max(0.0, min(1.0, confidence))
 
             log.info(
                 "adversarial_debate_complete",
                 control=control["id"],
-                verdict=judge_data.get("verdict"),
+                verdict=verdict,
+                judge_model=settings.llm_judge_model,
             )
 
             return {
                 "prosecutorArgs": prosecutor_args,
                 "defenderArgs": defender_args,
                 "judgeVerdict": {
-                    "confidence": judge_data["confidence"],
-                    "verdict": judge_data["verdict"],
-                    "decisiveEvidence": judge_data["decisiveEvidence"],
+                    "confidence": confidence,
+                    "verdict": verdict,
+                    "decisiveEvidence": judge_data.get(
+                        "decisiveEvidence",
+                        "Unable to determine decisive evidence",
+                    ),
                 },
             }
 
         except Exception as e:
             log.error("adversarial_debate_failed", control=control["id"], error=str(e))
-            return self._mock_debate(control)
+            return {
+                "prosecutorArgs": [f"LLM debate failed for {control['id']}. Manual review required."],
+                "defenderArgs": ["Unable to generate defense — LLM unavailable."],
+                "judgeVerdict": {
+                    "confidence": 0.5,
+                    "verdict": "partial",
+                    "decisiveEvidence": "Adversarial debate could not complete. Flagged for manual review.",
+                },
+            }
 
     # ── 3. Copilot Chat ────────────────────────────────────────────────────
 
     async def copilot_chat(self, messages: list[dict], context: str = "") -> str:
         """
-        Auditor copilot chatbot — answers compliance questions
-        with awareness of the current audit context.
+        Auditor copilot chatbot powered by local Mistral.
+        Answers compliance questions with awareness of the current audit context.
         """
-        if not client:
-            return self._mock_copilot(messages[-1]["content"] if messages else "")
-
-        system_msg = f"""You are an expert cybersecurity compliance auditor assistant for the Dhiware Compliance Intelligence Platform.
+        system_prompt = f"""You are an expert cybersecurity compliance auditor assistant for the Dhiware Compliance Intelligence Platform.
 Help auditors understand findings, interpret controls, and suggest remediations.
 Be concise, precise, and cite specific standards when relevant.
 Current audit context: {context}"""
 
+        # Build the conversation as a single prompt for the local LLM
+        conversation = ""
+        for msg in messages:
+            role = "User" if msg["role"] == "user" else "Assistant"
+            conversation += f"\n{role}: {msg['content']}"
+
+        prompt = f"{conversation}\n\nAssistant:"
+
         try:
-            response = await client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "system", "content": system_msg}] + messages,
+            reply = await _call_llm(
+                prompt=prompt,
+                model=settings.llm_model,
+                system_prompt=system_prompt,
                 temperature=0.3,
                 max_tokens=500,
             )
-            return response.choices[0].message.content
+            return reply.strip()
+
         except Exception as e:
             log.error("copilot_chat_failed", error=str(e))
-            return self._mock_copilot(messages[-1]["content"] if messages else "")
-
-    # ── Mock Fallbacks (no API key) ────────────────────────────────────────
-
-    def _mock_classification(self, control: dict, chunks: list[dict]) -> dict:
-        statuses = ["covered", "covered", "partial", "gap", "stale"]
-        status = random.choice(statuses)
-        confidence = round(random.uniform(0.65, 0.98), 2)
-        return {
-            "status": status,
-            "confidence": confidence,
-            "source": (
-                f"{chunks[0]['filename']} — {chunks[0]['section_ref']}"
-                if chunks
-                else "No evidence found"
-            ),
-            "remediation": (
-                None
-                if status == "covered"
-                else f"Address {control['name']} gap by reviewing relevant documentation."
-            ),
-        }
-
-    def _mock_debate(self, control: dict) -> dict:
-        return {
-            "prosecutorArgs": [
-                f"No explicit evidence of {control['name']} implementation found",
-                "Evidence is outdated or lacks specific timestamps",
-                "Required scope coverage appears incomplete",
-            ],
-            "defenderArgs": [
-                f"Policy document references {control['name']} requirements",
-                "SOC report provides partial attestation of this control",
-            ],
-            "judgeVerdict": {
-                "confidence": 0.72,
-                "verdict": "partial",
-                "decisiveEvidence": (
-                    "Policy defines the control but implementation evidence "
-                    "is insufficient for full compliance."
-                ),
-            },
-        }
-
-    def _mock_copilot(self, question: str) -> str:
-        return (
-            f"Based on the current audit context, I can see this relates to "
-            f"{question[:50]}... The key concern here is ensuring your evidence "
-            f"aligns with the framework requirements. Would you like me to explain "
-            f"the specific control requirements or suggest remediation steps?"
-        )
+            return (
+                "I'm having trouble connecting to the local LLM service. "
+                "Please ensure Ollama is running and the model is loaded. "
+                "You can check with: docker logs ollama"
+            )
 
 
 llm_service = LLMService()

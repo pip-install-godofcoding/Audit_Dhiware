@@ -36,6 +36,27 @@ services:
     volumes:
       - ./backend/policies:/policies
 
+  # ── Local LLM (Ollama — runs Llama 3.1 / Mistral locally) ────────────
+  ollama:
+    image: ollama/ollama:latest
+    ports: ["11434:11434"]
+    volumes:
+      - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Pull the model on first start
+    entrypoint: >
+      sh -c "ollama serve &
+             sleep 5 &&
+             ollama pull mistral &&
+             ollama pull llama3.1 &&
+             wait"
+
   api:
     build: ./backend/api
     ports: ["8000:8000"]
@@ -50,9 +71,11 @@ services:
       SECRET_KEY: super-secret-jwt-key-change-in-production
       CELERY_BROKER_URL: redis://redis:6379/1
       INGEST_SERVICE_URL: http://ingest:8001
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_BASE_URL: http://ollama:11434/v1
+      LLM_MODEL: mistral
+      LLM_JUDGE_MODEL: llama3.1
       EMBEDDING_MODEL: BAAI/bge-m3
-    depends_on: [postgres, redis, minio, opa, ingest]
+    depends_on: [postgres, redis, minio, opa, ingest, ollama]
     volumes:
       - ./backend/api:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -68,9 +91,11 @@ services:
       MINIO_SECRET_KEY: minioadmin123
       MINIO_BUCKET: compliance-docs
       OPA_URL: http://opa:8181
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_BASE_URL: http://ollama:11434/v1
+      LLM_MODEL: mistral
+      LLM_JUDGE_MODEL: llama3.1
       EMBEDDING_MODEL: BAAI/bge-m3
-    depends_on: [postgres, redis, minio]
+    depends_on: [postgres, redis, minio, ollama]
     volumes:
       - ./backend/api:/app
     command: celery -A worker.celery_app worker --loglevel=info --concurrency=2
@@ -94,4 +119,4 @@ volumes:
   pgdata:
   redisdata:
   miniodata:
-
+  ollama_models:

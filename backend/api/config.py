@@ -25,12 +25,16 @@ class Settings(BaseSettings):
     # Celery
     celery_broker_url: str
 
-    # LLM / Embeddings
-    openai_api_key: str = ""
-    embedding_model: str = "BAAI/bge-m3"
-
     # Ingest microservice
     ingest_service_url: str = "http://ingest:8001"
+
+    # Local LLM (Ollama / vLLM — OpenAI-compatible API)
+    llm_base_url: str = "http://ollama:11434/v1"
+    llm_model: str = "mistral"           # Prosecutor + Defender + Classifier
+    llm_judge_model: str = "llama3.1"    # Judge (heavier model for final verdict)
+
+    # Embeddings
+    embedding_model: str = "BAAI/bge-m3"
 
     # Chunking
     max_chunk_size: int = 500
