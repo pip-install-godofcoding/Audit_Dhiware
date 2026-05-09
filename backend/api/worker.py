@@ -34,14 +34,33 @@ celery_app.conf.update(
     enable_utc=True,
 )
 
+# ── India-specific PII regex patterns (from ingest-service/pii_masker.py) ──
+def _mask_india_pii(text: str) -> tuple[str, int]:
+    """Supplementary regex-based PII masking for Indian identifiers."""
+    count = 0
+    # Aadhaar numbers (12 digits)
+    aadhaar_matches = re.findall(r'\b\d{12}\b', text)
+    text = re.sub(r'\b\d{12}\b', '[AADHAAR]', text)
+    count += len(aadhaar_matches)
+    # PAN numbers (ABCDE1234F)
+    pan_matches = re.findall(r'\b[A-Z]{5}[0-9]{4}[A-Z]\b', text)
+    text = re.sub(r'\b[A-Z]{5}[0-9]{4}[A-Z]\b', '[PAN]', text)
+    count += len(pan_matches)
+    # Indian phone numbers (10 digits)
+    phone_matches = re.findall(r'\b\d{10}\b', text)
+    text = re.sub(r'\b\d{10}\b', '[PHONE]', text)
+    count += len(phone_matches)
+    return text, count
+
+
 # ── Lazy imports inside tasks to avoid loading models at startup ───────────
 
 @celery_app.task(name="ingest_document", bind=True, max_retries=3)
 def ingest_document_task(self, document_id: str, s3_key: str, file_type: str):
     """
     1. Download raw file from MinIO
-    2. Parse text (PDF/DOCX/TXT)
-    3. PII redaction with Presidio
+    2. Parse text (PDF/DOCX/TXT/Images via OCR)
+    3. PII redaction with Presidio + India-specific regex
     4. Chunk → embed with BGE-M3
     5. Store chunks + embeddings in document_chunks table
     6. Update document masking_status → 'masked'
@@ -49,6 +68,8 @@ def ingest_document_task(self, document_id: str, s3_key: str, file_type: str):
     from minio import Minio
     import fitz  # PyMuPDF
     import docx
+    from PIL import Image
+    import pytesseract
     from presidio_analyzer import AnalyzerEngine
     from presidio_anonymizer import AnonymizerEngine
     from sentence_transformers import SentenceTransformer
@@ -68,7 +89,7 @@ def ingest_document_task(self, document_id: str, s3_key: str, file_type: str):
         raw_bytes = response.read()
         response.close()
 
-        # 2. Parse text
+        # 2. Parse text (supports PDF, DOCX, images, plain text)
         text = ""
         if file_type == "pdf":
             with fitz.open(stream=raw_bytes, filetype="pdf") as doc:
@@ -77,16 +98,24 @@ def ingest_document_task(self, document_id: str, s3_key: str, file_type: str):
         elif file_type == "docx":
             doc_obj = docx.Document(io.BytesIO(raw_bytes))
             text = "\n".join(p.text for p in doc_obj.paragraphs)
+        elif file_type in ("png", "jpg", "jpeg"):
+            # OCR for scanned documents (from ingest-service/parser.py)
+            image = Image.open(io.BytesIO(raw_bytes))
+            text = pytesseract.image_to_string(image)
         else:
             text = raw_bytes.decode("utf-8", errors="replace")
 
-        # 3. PII Redaction
+        # 3a. PII Redaction — Presidio (NER-based, covers names/SSNs/emails)
         analyzer = AnalyzerEngine()
         anonymizer = AnonymizerEngine()
         results = analyzer.analyze(text=text, language="en")
         anonymized = anonymizer.anonymize(text=text, analyzer_results=results)
         clean_text = anonymized.text
         pii_count = len(results)
+
+        # 3b. India-specific PII — regex patterns (Aadhaar, PAN, phone)
+        clean_text, india_pii_count = _mask_india_pii(clean_text)
+        pii_count += india_pii_count
 
         # 4. Chunk text
         words = clean_text.split()
