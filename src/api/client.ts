@@ -100,8 +100,7 @@ export const logout = () => {
   window.location.href = "/login"
 }
 
-// Legacy alias — used by LoginPage.tsx
-export const mockLogin = login
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DOCUMENTS
@@ -121,8 +120,7 @@ export const uploadDocument = async (file: File): Promise<Document> => {
   return res.data
 }
 
-// Legacy alias — used by DocumentsPage.tsx
-export const mockGetDocuments = getDocuments
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AUDITS
@@ -143,9 +141,7 @@ export const getAudits = async (): Promise<AuditHistoryItem[]> => {
   return res.data
 }
 
-// Legacy aliases
-export const mockRunAudit = runAudit
-export const mockAuditStatus = getAuditStatus
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FINDINGS

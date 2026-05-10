@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronUp, FileText, Lightbulb, X } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ChevronDown, ChevronUp, FileText, Lightbulb, X, Loader2 } from 'lucide-react';
+import { getFindings, updateFinding } from '../../api/client';
 
 // TYPES
 type FindingStatus = "gap" | "partial" | "covered" | "stale";
@@ -13,11 +14,6 @@ interface EvidenceChunk {
   section: string;
   page: number;
   text: string;
-}
-
-interface DebateArgument {
-  side: "prosecutor" | "defender";
-  points: string[];
 }
 
 interface JudgeVerdict {
@@ -43,110 +39,90 @@ interface Finding {
   auditorComment?: string;
 }
 
-// MOCK DATA
-const MOCK_FINDINGS: Finding[] = [
-  {
-    id: "GAP-001",
-    controlId: "A.9.2.5",
-    controlName: "Review of user access rights",
-    severity: "high",
-    status: "gap",
-    reviewStatus: "pending",
-    confidence: 0.88,
-    frameworks: ["ISO A.9.2.5", "NIST AC-2(7)", "SOC2 CC6.3"],
-    evidenceChunks: [
-      { id: "c1", sourceDoc: "security_policy.pdf", section: "Section 4.2", page: 12, text: "All privileged accounts must be reviewed quarterly and access revoked within 24 hours of termination." },
-      { id: "c2", sourceDoc: "soc2_report.pdf", section: "CC6.3", page: 34, text: "Access review last performed: 18 months ago. No current-year review record found." }
-    ],
-    prosecutorArgs: ["Policy mandates quarterly reviews but SOC evidence shows 18-month gap", "No reviewer name or date found in any document", "Vendor contract does not mention access review obligations"],
-    defenderArgs: ["Policy section 4.2 explicitly defines the quarterly requirement", "Evidence of the control definition exists in the policy"],
-    judgeVerdict: { confidence: 0.88, verdict: "gap", decisiveEvidence: "SOC report CC6.3 confirms last review was 18 months ago, directly contradicting the quarterly mandate." },
-    remediation: "Conduct and document a privileged access review immediately. Update SOC evidence within 30 days. Ensure reviewer name and date are recorded."
-  },
-  {
-    id: "GAP-002",
-    controlId: "A.10.1.1",
-    controlName: "Policy on use of cryptographic controls",
-    severity: "high",
-    status: "gap",
-    reviewStatus: "pending",
-    confidence: 0.92,
-    frameworks: ["ISO A.10.1.1", "NIST SC-28"],
-    evidenceChunks: [
-      { id: "c3", sourceDoc: "security_policy.pdf", section: "Section 6.1", page: 18, text: "Encryption at rest is required for all systems storing PII or financial data." },
-      { id: "c4", sourceDoc: "vendor_contract.pdf", section: "Clause 14", page: 7, text: "Vendor data handling obligations. No encryption requirements specified." }
-    ],
-    prosecutorArgs: ["Policy mandates encryption at rest but SOC report has no corresponding evidence", "Vendor contract omits encryption obligations entirely", "No attestation of encryption implementation found"],
-    defenderArgs: ["Policy section 6.1 clearly defines the encryption requirement"],
-    judgeVerdict: { confidence: 0.92, verdict: "gap", decisiveEvidence: "No SOC evidence for encryption at rest. Vendor contract Clause 14 omits encryption obligations entirely." },
-    remediation: "Add encryption at rest attestation to the next SOC audit. Update vendor contract to include explicit encryption obligations."
-  },
-  {
-    id: "GAP-003",
-    controlId: "A.17.1.1",
-    controlName: "Planning information security continuity",
-    severity: "medium",
-    status: "gap",
-    reviewStatus: "accepted",
-    confidence: 0.95,
-    frameworks: ["ISO A.17.1.1", "SOC2 A1.2"],
-    evidenceChunks: [
-      { id: "c5", sourceDoc: "soc2_report.pdf", section: "A1.2", page: 45, text: "No BCP or DRP clauses found. Framework requires documented RTO/RPO targets." }
-    ],
-    prosecutorArgs: ["No BCP/DRP found in any document", "No RTO/RPO targets documented", "No evidence of recovery procedure testing"],
-    defenderArgs: [],
-    judgeVerdict: null,
-    remediation: "Document RTO/RPO targets. Create and test a business continuity plan. Include BCP evidence in next SOC audit."
-  },
-  {
-    id: "GAP-004",
-    controlId: "A.12.6.1",
-    controlName: "Management of technical vulnerabilities",
-    severity: "low",
-    status: "stale",
-    reviewStatus: "pending",
-    confidence: 0.71,
-    frameworks: ["NIST RA-5"],
-    evidenceChunks: [
-      { id: "c6", sourceDoc: "security_policy.pdf", section: "Section 9.3", page: 29, text: "Monthly vulnerability scans required across all production systems." },
-      { id: "c7", sourceDoc: "soc2_report.pdf", section: "CC7.2", page: 52, text: "Vulnerability scans run monthly. Last scan: February 2024." }
-    ],
-    prosecutorArgs: ["Last scan is 2+ months overdue based on policy requirement", "Evidence is stale — not current year"],
-    defenderArgs: ["Policy and SOC both confirm monthly scan requirement exists", "Previous compliance was demonstrated"],
-    judgeVerdict: { confidence: 0.71, verdict: "stale", decisiveEvidence: "SOC CC7.2 last scan February 2024. Policy requires monthly scans. Evidence is stale." },
-    remediation: "Schedule overdue vulnerability scan immediately. Upload attestation to SOC evidence repository."
-  },
-  {
-    id: "GAP-005",
-    controlId: "A.9.4.2",
-    controlName: "Secure log-on procedures",
-    severity: "medium",
-    status: "partial",
-    reviewStatus: "pending",
-    confidence: 0.67,
-    frameworks: ["ISO A.9.4.2", "NIST AC-17"],
-    evidenceChunks: [
-      { id: "c8", sourceDoc: "soc2_report.pdf", section: "CC6.1", page: 31, text: "MFA is enforced for all production system access. Last tested: March 2024." }
-    ],
-    prosecutorArgs: ["MFA evidence exists but is 14 months old", "No evidence of MFA on development systems", "Confidence below threshold — partial coverage only"],
-    defenderArgs: ["SOC CC6.1 explicitly confirms MFA enforcement", "March 2024 test is within acceptable range for some interpretations"],
-    judgeVerdict: { confidence: 0.67, verdict: "partial", decisiveEvidence: "MFA evidenced but test date is 14 months old. Development system coverage unclear." },
-    remediation: "Re-test MFA enforcement across all systems including development. Upload fresh attestation."
-  },
-];
-
 export default function FindingsReviewPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const auditId = searchParams.get("auditId") || "";
 
   // STATE
-  const [findings, setFindings] = useState<Finding[]>(MOCK_FINDINGS);
-  const [selectedId, setSelectedId] = useState<string>(MOCK_FINDINGS[0].id);
+  const [findings, setFindings] = useState<Finding[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState<string>("");
   const [filterSeverity, setFilterSeverity] = useState<"all" | Severity>("all");
   const [filterReview, setFilterReview] = useState<"all" | ReviewStatus>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showDebate, setShowDebate] = useState(false);
   const [showModifyDrawer, setShowModifyDrawer] = useState(false);
-  
+
+  // Fetch findings from backend
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!auditId) {
+        setError("No audit ID specified. Navigate here from the audit progress page.");
+        setLoading(false);
+        return;
+      }
+      try {
+        setLoading(true);
+        const data = await getFindings(auditId);
+        const mapped: Finding[] = data.map((f: any) => ({
+          id: f.id,
+          controlId: f.controlId || f.control_id || "—",
+          controlName: f.controlName || f.control_name || "—",
+          severity: (f.aiSeverity || f.ai_severity || "medium") as Severity,
+          status: (f.aiStatus || f.ai_status || "gap") as FindingStatus,
+          reviewStatus: (f.reviewStatus || f.review_status || "pending") as ReviewStatus,
+          confidence: f.confidence || 0,
+          frameworks: f.frameworks || [],
+          evidenceChunks: f.evidenceChunks || f.evidence_chunks || [],
+          prosecutorArgs: f.prosecutorArgs || f.prosecutor_args || [],
+          defenderArgs: f.defenderArgs || f.defender_args || [],
+          judgeVerdict: f.judgeVerdict || f.judge_verdict || null,
+          remediation: f.remediation || "—",
+          auditorComment: f.auditorComment || f.auditor_comment || "",
+        }));
+        setFindings(mapped);
+        if (mapped.length > 0) setSelectedId(mapped[0].id);
+      } catch (err: any) {
+        setError(err.response?.data?.detail || "Failed to load findings");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [auditId]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-indigo-600 mr-3" />
+        <span className="text-gray-500">Loading findings...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 max-w-md text-center">
+          {error}
+        </div>
+      </div>
+    );
+  }
+
+  if (findings.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center text-gray-500">
+          <p className="text-lg font-medium">No findings detected</p>
+          <p className="text-sm mt-2">All controls passed for this audit.</p>
+        </div>
+      </div>
+    );
+  }
+
   const selectedFinding = findings.find(f => f.id === selectedId) || findings[0];
 
   const [modifyDraft, setModifyDraft] = useState<{ severity: Severity; comment: string }>({

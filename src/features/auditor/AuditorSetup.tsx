@@ -1,21 +1,14 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/Button"
 import { Step1Documents, Document } from "./components/Step1Documents"
 import { Step2Frameworks, Framework } from "./components/Step2Frameworks"
 import { Step3Options, AuditOptions } from "./components/Step3Options"
 import { Step4Review } from "./components/Step4Review"
-import { mockRunAudit } from "@/api"
+import { getDocuments, runAudit } from "../../api/client"
 
-// Mock Data
-const MOCK_DOCUMENTS: Document[] = [
-  { id: "doc-1", name: "security_policy.pdf", fileType: "pdf", size: "2.4 MB", uploadDate: "2024-03-01", status: "masked" },
-  { id: "doc-2", name: "vendor_contract.pdf", fileType: "pdf", size: "1.1 MB", uploadDate: "2024-03-05", status: "masked" },
-  { id: "doc-3", name: "incident_response.docx", fileType: "docx", size: "5.6 MB", uploadDate: "2024-03-10", status: "pending" },
-  { id: "doc-4", name: "access_logs_q1.txt", fileType: "txt", size: "12.0 MB", uploadDate: "2024-03-12", status: "masked" },
-];
-
-const MOCK_FRAMEWORKS: Framework[] = [
+// Frameworks are static configuration
+const STATIC_FRAMEWORKS: Framework[] = [
   { id: "iso-27001", name: "ISO 27001", shortName: "ISO", controls: 114, description: "International standard on how to manage information security." },
   { id: "nist-csf", name: "NIST CSF 2.0", shortName: "NIST", controls: 108, description: "Cybersecurity framework by the National Institute of Standards and Technology." },
   { id: "soc2", name: "SOC 2 Type II", shortName: "SOC2", controls: 64, description: "Auditing procedure that ensures service providers securely manage data." },
@@ -27,6 +20,27 @@ export function AuditorSetup() {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [realDocuments, setRealDocuments] = useState<Document[]>([]);
+
+  // Fetch real documents from backend
+  useEffect(() => {
+    const fetchDocs = async () => {
+      try {
+        const data = await getDocuments();
+        setRealDocuments(data.map((d: any) => ({
+          id: d.id,
+          name: d.filename,
+          fileType: (d.file_type || d.filename.split('.').pop() || 'txt').toLowerCase(),
+          size: d.size_human || `${((d.size_bytes || 0) / 1024).toFixed(0)} KB`,
+          uploadDate: d.uploaded_at ? new Date(d.uploaded_at).toISOString().split('T')[0] : '—',
+          status: d.masking_status || d.maskingStatus || 'pending',
+        })));
+      } catch (err) {
+        console.error('Failed to fetch documents:', err);
+      }
+    };
+    fetchDocs();
+  }, []);
 
   // State
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
@@ -43,13 +57,17 @@ export function AuditorSetup() {
   const handleRunAudit = async () => {
     setIsSubmitting(true);
     try {
-      const response = await mockRunAudit({
-        documents: selectedDocIds,
+      const response = await runAudit({
+        documentIds: selectedDocIds,
         frameworks: selectedFrameworkIds,
-        options
+        options: {
+          adversarialDebate: options.adversarialDebate,
+          confidenceDecay: options.confidenceDecay,
+          confidenceThreshold: options.confidenceThreshold,
+          controlDomains: {},
+        },
       });
-      // Navigate to progress screen (currently a placeholder)
-      navigate(`/auditor/progress?id=${(response as any).audit_id}`);
+      navigate(`/auditor/progress?id=${response.auditId}`);
     } catch (error) {
       console.error(error);
     } finally {
@@ -99,14 +117,14 @@ export function AuditorSetup() {
       <div className="min-h-[400px]">
         {currentStep === 1 && (
           <Step1Documents 
-            documents={MOCK_DOCUMENTS} 
+            documents={realDocuments} 
             selectedDocIds={selectedDocIds} 
             onSelectionChange={setSelectedDocIds} 
           />
         )}
         {currentStep === 2 && (
           <Step2Frameworks 
-            frameworks={MOCK_FRAMEWORKS} 
+            frameworks={STATIC_FRAMEWORKS} 
             selectedFrameworkIds={selectedFrameworkIds} 
             onSelectionChange={setSelectedFrameworkIds} 
           />
@@ -119,9 +137,9 @@ export function AuditorSetup() {
         )}
         {currentStep === 4 && (
           <Step4Review 
-            documents={MOCK_DOCUMENTS} 
+            documents={realDocuments} 
             selectedDocIds={selectedDocIds} 
-            frameworks={MOCK_FRAMEWORKS} 
+            frameworks={STATIC_FRAMEWORKS} 
             selectedFrameworkIds={selectedFrameworkIds} 
             options={options} 
           />

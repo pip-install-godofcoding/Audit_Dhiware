@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, ArrowUp, Sparkles, User, FileText, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { copilotChat } from '../../../api/client';
 
 interface Message {
   id: string;
   role: "user" | "agent";
   content: React.ReactNode;
+  rawText?: string;
 }
 
 const SUGGESTIONS = [
@@ -25,6 +27,7 @@ export default function AuditorChatbot() {
     {
       id: "init-1",
       role: "agent",
+      rawText: "Hello! I am your Compliance Intelligence Assistant. I am directly connected to the platform's reasoning engine. I can help you configure your audit, analyze complex framework controls, summarize evidence gaps, or generate your final reports. How can I assist you today?",
       content: (
         <div className="space-y-2">
           <p>Hello! I am your <strong>Compliance Intelligence Assistant</strong>.</p>
@@ -47,83 +50,38 @@ export default function AuditorChatbot() {
     if (!text.trim()) return;
     
     // Add User Message
-    const userMsg: Message = { id: Date.now().toString(), role: "user", content: text };
+    const userMsg: Message = { id: Date.now().toString(), role: "user", content: text, rawText: text };
     setMessages(prev => [...prev, userMsg]);
     setInput("");
     setIsTyping(true);
 
-    // Simulate Agent processing delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setIsTyping(false);
+    try {
+      // Build conversation history for the API
+      const history = messages
+        .filter(m => m.rawText)
+        .map(m => ({ role: m.role === "agent" ? "assistant" : "user", content: m.rawText! }));
+      history.push({ role: "user", content: text });
 
-    // Generate Mock Response based on keywords
-    let responseContent: React.ReactNode = "";
-    const lowerText = text.toLowerCase();
-
-    if (lowerText.includes("iso a.9.2.5") || lowerText.includes("a.9.2.5")) {
-      responseContent = (
-        <div className="space-y-3">
-          <p><strong>ISO 27001 Control A.9.2.5 (Review of user access rights)</strong></p>
-          <p>This control requires organizations to review users' access rights at regular intervals.</p>
-          <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-indigo-900 text-sm">
-            <p className="font-semibold mb-1">Key Evidence Requirements:</p>
-            <ul className="list-disc pl-4 space-y-1">
-              <li>Documented access review policy specifying frequency (e.g., quarterly).</li>
-              <li>Proof of execution (tickets, emails, or logs) matching the policy cadence.</li>
-              <li>Evidence that revoked/modified access was actioned promptly.</li>
-            </ul>
-          </div>
-        </div>
-      );
-    } else if (lowerText.includes("summarize pending gaps") || lowerText.includes("pending")) {
-      responseContent = (
-        <div className="space-y-3">
-          <p>I have analyzed the current audit state. You have <strong>3 pending findings</strong> requiring human review:</p>
-          <ul className="space-y-2">
-            <li className="flex gap-2">
-              <span className="text-red-600 font-bold">HIGH</span> 
-              <span className="text-gray-800">ISO A.9.2.5 — Review of user access rights (Evidence gap: 18 months overdue)</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="text-red-600 font-bold">HIGH</span> 
-              <span className="text-gray-800">ISO A.10.1.1 — Cryptographic controls (Missing SOC attestation)</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="text-purple-600 font-bold">STALE</span> 
-              <span className="text-gray-800">NIST RA-5 — Vulnerability Mgmt (Last scan February 2024)</span>
-            </li>
-          </ul>
-          <p className="italic text-sm text-gray-500">Would you like me to navigate you to the Findings Review screen to resolve these?</p>
-        </div>
-      );
-    } else if (lowerText.includes("generate final report") || lowerText.includes("report")) {
-      responseContent = (
-        <div className="space-y-3">
-          <p>Certainly. I have compiled the results across all evaluated controls and frameworks.</p>
-          <button 
-            onClick={() => navigate("/auditor/report")}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          >
-            <FileText className="w-4 h-4" />
-            Open Report Viewer
-          </button>
-        </div>
-      );
-    } else if (lowerText.includes("adversarial debate")) {
-      responseContent = (
-        <div className="space-y-2">
-          <p><strong>Adversarial Debate</strong> is our advanced multi-agent evaluation mechanism.</p>
-          <p>When an evidence chunk yields a borderline or "partial" confidence score, I spin up two distinct LLM personas: a <strong>Prosecutor</strong> (arguing that the control fails) and a <strong>Defender</strong> (arguing the control passes). A third <strong>Judge</strong> agent evaluates their arguments to determine the final verdict.</p>
-          <p>This drastically reduces false positives in complex compliance environments.</p>
-        </div>
-      );
-    } else {
-      responseContent = (
-        <p>I understand. Based on the current workspace context, I am continually analyzing the evidence corpus. Could you specify which framework or control ID you'd like me to focus on?</p>
-      );
+      // Call real copilot API
+      const responseText = await copilotChat(history, "compliance-audit");
+      
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: "agent",
+        rawText: responseText,
+        content: <div className="whitespace-pre-wrap">{responseText}</div>
+      }]);
+    } catch (err: any) {
+      // Fallback if API is unreachable
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: "agent",
+        rawText: "I'm having trouble connecting to the reasoning engine right now. Please try again shortly.",
+        content: <p className="text-amber-600">I'm having trouble connecting to the reasoning engine right now. Please try again shortly.</p>
+      }]);
+    } finally {
+      setIsTyping(false);
     }
-
-    setMessages(prev => [...prev, { id: Date.now().toString(), role: "agent", content: responseContent }]);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

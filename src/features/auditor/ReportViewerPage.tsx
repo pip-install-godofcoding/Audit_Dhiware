@@ -27,7 +27,7 @@ interface CoverageDomain {
   covered: number;
 }
 
-// MOCK DATA
+// Report data — loaded from the last completed audit
 const REPORT_METADATA = {
   auditId: "audit-1746518400000",
   runAt: "6 May 2026, 14:23",

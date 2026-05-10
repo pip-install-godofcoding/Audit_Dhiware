@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { ProgressBar } from "@/components/ui/ProgressBar"
 import { Card, CardContent } from "@/components/ui/Card"
 import { LiveFeed, LogEntry } from "./components/LiveFeed"
-import { mockAuditStatus } from "@/api"
+import { getAuditStatus } from "../../api/client"
 
 export function AuditorProgress() {
   const navigate = useNavigate();
@@ -22,7 +22,7 @@ export function AuditorProgress() {
 
     const pollStatus = async () => {
       try {
-        const status = await mockAuditStatus(auditId);
+        const status = await getAuditStatus(auditId);
         
         if (!isMounted) return;
 

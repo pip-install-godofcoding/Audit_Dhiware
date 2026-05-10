@@ -1,2 +1,2 @@
-// Re-export from real API client (replaces mock.ts)
+// Re-export from API client
 export * from "./client"

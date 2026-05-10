@@ -11,7 +11,7 @@ import { Card } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
 import { useNavigate } from "react-router-dom";
-import { mockGetDocuments } from "../../api";
+import { getDocuments } from "../../api/client";
 
 
 export default function DocumentsPage() {
@@ -22,40 +22,16 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     const loadDocuments = async () => {
-
-  try {
-
-    const storedDocs = localStorage.getItem("allDocuments");
-
-    if (storedDocs) {
-      setDocuments(JSON.parse(storedDocs));
-      setIsLoading(false);
-      return;
-    }
-
-    const mockDocs = await mockGetDocuments();
-
-    localStorage.setItem(
-      "allDocuments",
-      JSON.stringify(mockDocs)
-    );
-
-    setDocuments(mockDocs);
-
-  } catch (error) {
-
-    console.error(error);
-
-  } finally {
-
-    setIsLoading(false);
-
-  }
-};
-
-loadDocuments();
-
-loadDocuments();
+      try {
+        const docs = await getDocuments();
+        setDocuments(docs);
+      } catch (error) {
+        console.error("Failed to load documents:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadDocuments();
   }, []);
 
   const filteredDocuments = useMemo(() => {
@@ -82,21 +58,8 @@ loadDocuments();
   };
   const handleDelete = (id: string) => {
     if (!window.confirm("Delete this document?")) return;
-  const updatedDocs = documents.filter(
-    (doc) => doc.id !== id
-  );
-
-  setDocuments(updatedDocs);
-
-  const uploadedDocs = updatedDocs.filter(
-    (doc) => doc.id.toString().includes("doc-")
-  );
-
-  localStorage.setItem(
-    "uploadedDocs",
-    JSON.stringify(uploadedDocs)
-  );
-};
+    setDocuments(prev => prev.filter(doc => doc.id !== id));
+  };
 
   return (
     

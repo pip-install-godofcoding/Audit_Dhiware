@@ -7,7 +7,7 @@ import Checkbox from "../../components/ui/Checkbox";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 
-import { mockLogin } from "../../api";
+import { login as apiLogin } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 
 export default function LoginPage() {
@@ -29,7 +29,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const response = await mockLogin(email, password);
+      const response = await apiLogin(email, password);
 
       login(response.user, response.token);
 

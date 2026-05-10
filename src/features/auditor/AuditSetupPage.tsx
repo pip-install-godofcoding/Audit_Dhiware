@@ -1,22 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronUp, Play, Search } from 'lucide-react';
+import { ChevronDown, ChevronUp, Play, Search, Loader2 } from 'lucide-react';
 
 import Checkbox from '@/components/ui/Checkbox';
 import Switch from '@/components/ui/Switch';
 import Slider from '@/components/ui/Slider';
 import FrameworkCard from './components/FrameworkCard';
 import DocumentRow from './components/DocumentRow';
+import { getDocuments, runAudit } from '../../api/client';
 
-const MOCK_DOCUMENTS = [
-  { id: "doc-1", filename: "vendor_contract_2026.pdf", fileType: "pdf" as const, size: "1.2 MB", uploadedAt: "12 May 2026", maskingStatus: "masked" as const },
-  { id: "doc-2", filename: "security_policy_v4.docx", fileType: "docx" as const, size: "845 KB", uploadedAt: "10 May 2026", maskingStatus: "masked" as const },
-  { id: "doc-3", filename: "soc2_report_2026.pdf", fileType: "pdf" as const, size: "3.1 MB", uploadedAt: "08 May 2026", maskingStatus: "masked" as const },
-  { id: "doc-4", filename: "pentest_results.pdf", fileType: "pdf" as const, size: "2.4 MB", uploadedAt: "05 May 2026", maskingStatus: "processing" as const },
-  { id: "doc-5", filename: "access_control_evidence.txt", fileType: "txt" as const, size: "120 KB", uploadedAt: "01 May 2026", maskingStatus: "masked" as const },
-];
-
-const MOCK_FRAMEWORKS = [
+// Frameworks are static configuration
+const FRAMEWORKS = [
   { id: "iso27001", name: "ISO 27001 / 27002", shortName: "ISO", controlCount: 114, description: "International standard for information security management systems." },
   { id: "nist", name: "NIST CSF 2.0", shortName: "NIST", controlCount: 108, description: "NIST Cybersecurity Framework for managing and reducing cybersecurity risk." },
   { id: "soc2", name: "SOC 2 Type II", shortName: "SOC2", controlCount: 64, description: "Trust Service Criteria for security, availability, and confidentiality." },
@@ -33,10 +27,21 @@ const CONTROL_DOMAINS = [
   { key: "vulnerabilityMgmt", label: "Vulnerability Management", description: "Scan cadence, patch management, pentesting" },
 ];
 
+interface DocItem {
+  id: string;
+  filename: string;
+  fileType: "pdf" | "docx" | "txt";
+  size: string;
+  uploadedAt: string;
+  maskingStatus: "masked" | "processing" | "pending" | "failed";
+}
+
 export default function AuditSetupPage() {
   const navigate = useNavigate();
 
   // STATE
+  const [documents, setDocuments] = useState<DocItem[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(true);
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
   const [selectedFrameworks, setSelectedFrameworks] = useState<string[]>(["iso27001"]);
   const [docSearch, setDocSearch] = useState("");
@@ -48,24 +53,48 @@ export default function AuditSetupPage() {
   });
   const [openSections, setOpenSections] = useState({ documents: true, frameworks: true, options: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  // Fetch real documents from backend
+  useEffect(() => {
+    const fetchDocs = async () => {
+      try {
+        setLoadingDocs(true);
+        const data = await getDocuments();
+        setDocuments(data.map((d: any) => ({
+          id: d.id,
+          filename: d.filename,
+          fileType: (d.file_type || d.fileType || d.filename.split('.').pop() || "txt").toLowerCase() as any,
+          size: d.size_human || d.sizeHuman || `${((d.size_bytes || 0) / 1024).toFixed(0)} KB`,
+          uploadedAt: d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—",
+          maskingStatus: (d.masking_status || d.maskingStatus || "pending") as any,
+        })));
+      } catch (err: any) {
+        setError("Failed to load documents: " + (err.response?.data?.detail || err.message));
+      } finally {
+        setLoadingDocs(false);
+      }
+    };
+    fetchDocs();
+  }, []);
 
   // DERIVED VALUES
   const filteredDocs = useMemo(() => {
-    return MOCK_DOCUMENTS.filter(doc => doc.filename.toLowerCase().includes(docSearch.toLowerCase()));
-  }, [docSearch]);
+    return documents.filter(doc => doc.filename.toLowerCase().includes(docSearch.toLowerCase()));
+  }, [docSearch, documents]);
 
   const availableDocs = useMemo(() => {
-    return MOCK_DOCUMENTS.filter(doc => doc.maskingStatus === "masked");
-  }, []);
+    return documents.filter(doc => doc.maskingStatus === "masked");
+  }, [documents]);
 
   const allMaskedSelected = selectedDocs.length === availableDocs.length && availableDocs.length > 0;
   const someMaskedSelected = selectedDocs.length > 0 && !allMaskedSelected;
 
   const estimatedTime = useMemo(() => {
-    const validSelectedDocsCount = selectedDocs.filter(id => MOCK_DOCUMENTS.find(d => d.id === id)?.maskingStatus === "masked").length;
+    const validSelectedDocsCount = selectedDocs.filter(id => documents.find(d => d.id === id)?.maskingStatus === "masked").length;
     const time = selectedFrameworks.length * validSelectedDocsCount * 1.2;
     return `~${time > 0 ? time.toFixed(0) : 0} minutes`;
-  }, [selectedDocs, selectedFrameworks]);
+  }, [selectedDocs, selectedFrameworks, documents]);
 
   const estimatedCost = useMemo(() => {
     return `$${(selectedFrameworks.length * 12).toFixed(0)}`;
@@ -73,7 +102,7 @@ export default function AuditSetupPage() {
 
   // HANDLERS
   const toggleDoc = (id: string) => {
-    const doc = MOCK_DOCUMENTS.find(d => d.id === id);
+    const doc = documents.find(d => d.id === id);
     if (!doc || doc.maskingStatus !== "masked") return;
     
     setSelectedDocs(prev => 
@@ -108,9 +137,23 @@ export default function AuditSetupPage() {
 
   const handleRunAudit = async () => {
     setIsSubmitting(true);
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    const auditId = "audit-" + Date.now();
-    navigate("/auditor/progress?id=" + auditId);
+    setError("");
+    try {
+      const response = await runAudit({
+        documentIds: selectedDocs,
+        frameworks: selectedFrameworks,
+        options: {
+          adversarialDebate: options.adversarialDebate,
+          confidenceDecay: options.confidenceDecay,
+          confidenceThreshold: options.confidenceThreshold,
+          controlDomains: options.domains,
+        },
+      });
+      navigate("/auditor/progress?id=" + response.auditId);
+    } catch (err: any) {
+      setError("Failed to start audit: " + (err.response?.data?.detail || err.message));
+      setIsSubmitting(false);
+    }
   };
 
   // HELPERS
@@ -222,7 +265,7 @@ export default function AuditSetupPage() {
               {openSections.frameworks && (
                 <div className="bg-white border-x border-b border-gray-200 rounded-b-xl p-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {MOCK_FRAMEWORKS.map(fw => (
+                    {FRAMEWORKS.map(fw => (
                       <FrameworkCard
                         key={fw.id}
                         id={fw.id}
