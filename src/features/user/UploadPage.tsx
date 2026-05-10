@@ -3,7 +3,7 @@ import { Upload, FileText, CheckCircle2 } from "lucide-react";
 
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
-import { mockUploadDocument } from "../../api";
+import { uploadDocument } from "../../api/client";
 import { useNavigate } from "react-router-dom";
 
 export default function UploadPage() {
@@ -33,12 +33,15 @@ export default function UploadPage() {
 
     setSelectedFile(file);
   };
+
   const navigate = useNavigate();
+
   const handleUpload = async () => {
     if (!selectedFile) return;
 
     setIsUploading(true);
     setUploadProgress(0);
+    setError("");
 
     const interval = setInterval(() => {
       setUploadProgress((prev) => {
@@ -48,32 +51,20 @@ export default function UploadPage() {
     }, 200);
 
     try {
-      const response = await mockUploadDocument(
-        selectedFile.name,
-        selectedFile.type
-      );
+      // Real upload to backend → MinIO storage
+      const response = await uploadDocument(selectedFile);
 
       clearInterval(interval);
-
       setUploadProgress(100);
-
       setUploadedDoc(response);
-      const existingDocs = JSON.parse(
-  localStorage.getItem("allDocuments") || "[]"
-);
 
-const updatedDocs = [response, ...existingDocs];
-
-localStorage.setItem(
-  "allDocuments",
-  JSON.stringify(updatedDocs)
-);
       setTimeout(() => {
-    navigate("/user/documents");
-}, 1200);
+        navigate("/user/documents");
+      }, 1200);
 
-    } catch (err) {
-      setError("Upload failed.");
+    } catch (err: any) {
+      clearInterval(interval);
+      setError(err.response?.data?.detail || "Upload failed. Please try again.");
     } finally {
       setIsUploading(false);
     }
@@ -128,6 +119,9 @@ localStorage.setItem(
                 <span className="font-medium ml-1">
                   {selectedFile.name}
                 </span>
+                <span className="text-gray-400 ml-2">
+                  ({(selectedFile.size / 1024).toFixed(1)} KB)
+                </span>
               </div>
             )}
 
@@ -142,7 +136,7 @@ localStorage.setItem(
               <div className="w-full mt-6">
 
                 <div className="flex justify-between text-xs text-gray-500 mb-1">
-                  <span>Uploading...</span>
+                  <span>Uploading to MinIO storage...</span>
                   <span>{uploadProgress}%</span>
                 </div>
 
@@ -186,18 +180,17 @@ localStorage.setItem(
                   </h3>
 
                   <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">
-                    PII Removed ✓
+                    Processing ✓
                   </span>
                 </div>
 
                 <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
                   <FileText className="w-4 h-4" />
-
                   <span>{uploadedDoc.filename}</span>
                 </div>
 
                 <div className="mt-2 text-xs text-gray-400">
-                  Uploaded on {uploadedDoc.uploadedAt}
+                  Document ID: {uploadedDoc.id}
                 </div>
 
               </div>

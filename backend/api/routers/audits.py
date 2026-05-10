@@ -21,6 +21,29 @@ from config import settings
 router = APIRouter()
 
 
+@router.get("")
+async def list_audits(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all audits, newest first."""
+    result = await db.execute(select(Audit).order_by(Audit.started_at.desc()))
+    audits = result.scalars().all()
+    return [
+        {
+            "id": str(a.id),
+            "status": a.status.value,
+            "config_json": a.config_json,
+            "run_by": str(a.run_by) if a.run_by else None,
+            "started_at": a.started_at.isoformat() if a.started_at else None,
+            "completed_at": a.completed_at.isoformat() if a.completed_at else None,
+            "total_controls": a.total_controls,
+            "completed_controls": a.completed_controls,
+        }
+        for a in audits
+    ]
+
+
 @router.post("/run", response_model=RunAuditResponse, status_code=202)
 async def run_audit_endpoint(
     body: RunAuditRequest,

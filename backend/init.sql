@@ -100,7 +100,7 @@ CREATE TABLE events (
 INSERT INTO users (email, password_hash, name, role)
 VALUES (
     'admin@dhiware.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/lewohMHjADNxqSKGu',
+    '$2b$12$32OY/aDtKtlDsJBQccB/UeBU16EA8644Qywx4lL8Aenqdmztz5iwy',
     'Admin User',
     'admin'
 );
@@ -109,7 +109,7 @@ VALUES (
 INSERT INTO users (email, password_hash, name, role)
 VALUES (
     'auditor@dhiware.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/lewohMHjADNxqSKGu',
+    '$2b$12$32OY/aDtKtlDsJBQccB/UeBU16EA8644Qywx4lL8Aenqdmztz5iwy',
     'Madhura Hegde',
     'auditor'
 );

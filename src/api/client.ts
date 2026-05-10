@@ -1,8 +1,6 @@
 /**
- * API Client — replaces mock.ts with real Axios calls to the FastAPI backend.
+ * API Client — Production Axios client for the FastAPI backend.
  * Base URL: http://localhost:8000/api/v1
- *
- * All functions match the exact interface the frontend components already use.
  */
 import axios from "axios"
 import type { Document } from "../types"
@@ -33,7 +31,7 @@ api.interceptors.response.use(
   }
 )
 
-// ── Types (matching mock.ts exports) ──────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────
 
 export interface AuditConfig {
   documentIds: string[]
@@ -56,6 +54,37 @@ export interface AuditStatusResponse {
   findingsCount: number
 }
 
+export interface UserItem {
+  id: string
+  name: string
+  email: string
+  role: string
+  isActive: boolean
+  lastActive: string | null
+}
+
+export interface HealthService {
+  [key: string]: string
+}
+
+export interface SystemHealth {
+  services: HealthService
+  ragLatencyMs: number
+  llmTokenUsage: number
+  activeAuditJobs: number
+}
+
+export interface AuditHistoryItem {
+  id: string
+  status: string
+  config_json: any
+  run_by: string
+  started_at: string
+  completed_at: string | null
+  total_controls: number
+  completed_controls: number
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // AUTH
 // ═══════════════════════════════════════════════════════════════════════════
@@ -71,7 +100,7 @@ export const logout = () => {
   window.location.href = "/login"
 }
 
-// Aliases matching mock.ts naming convention
+// Legacy alias — used by LoginPage.tsx
 export const mockLogin = login
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -92,17 +121,8 @@ export const uploadDocument = async (file: File): Promise<Document> => {
   return res.data
 }
 
-// Aliases matching mock.ts naming
+// Legacy alias — used by DocumentsPage.tsx
 export const mockGetDocuments = getDocuments
-export const mockUploadDocument = async (filename: string, _fileType: string) => {
-  // Legacy mock signature adapter — real uploads use the File-based uploadDocument
-  return {
-    id: "doc-" + Date.now(),
-    filename,
-    maskingStatus: "processing",
-    uploadedAt: new Date().toISOString().split("T")[0],
-  }
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AUDITS
@@ -118,9 +138,14 @@ export const getAuditStatus = async (auditId: string): Promise<AuditStatusRespon
   return res.data
 }
 
-// Aliases matching mock.ts naming
+export const getAudits = async (): Promise<AuditHistoryItem[]> => {
+  const res = await api.get("/audits")
+  return res.data
+}
+
+// Legacy aliases
 export const mockRunAudit = runAudit
-export const mockGetAuditStatus = getAuditStatus
+export const mockAuditStatus = getAuditStatus
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FINDINGS
@@ -139,38 +164,40 @@ export const updateFinding = async (
   return res.data
 }
 
-// Aliases matching mock.ts naming
-export const mockGetFindings = getFindings
-export const mockUpdateFinding = async (
-  findingId: string,
-  update: { reviewStatus: string; comment?: string; severity?: string }
-) => {
-  return updateFinding(findingId, update)
+// ═══════════════════════════════════════════════════════════════════════════
+// REPORTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const downloadReport = async (auditId: string, format: "pdf" | "excel" | "json") => {
+  const res = await api.get(`/audits/${auditId}/report?format=${format}`, { responseType: "blob" })
+  const url = window.URL.createObjectURL(new Blob([res.data]))
+  return { url, filename: `audit-report.${format}` }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// REPORTS (placeholder — backend endpoint not yet implemented)
+// ADMIN — USERS
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const mockDownloadReport = async (_auditId: string, format: "pdf" | "excel" | "json") => {
-  return { url: `/api/v1/reports/download?format=${format}`, filename: `audit-report-2026.${format}` }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ADMIN
-// ═══════════════════════════════════════════════════════════════════════════
-
-export const getUsers = async () => {
+export const getUsers = async (): Promise<UserItem[]> => {
   const res = await api.get("/users")
   return res.data
 }
 
-export const createUser = async (data: { name: string; email: string; password: string; role: string }) => {
+export const createUser = async (data: { name: string; email: string; password: string; role: string }): Promise<UserItem> => {
   const res = await api.post("/users", data)
   return res.data
 }
 
-export const getSystemHealth = async () => {
+export const toggleUserActive = async (userId: string, isActive: boolean): Promise<UserItem> => {
+  const res = await api.patch(`/users/${userId}`, { isActive })
+  return res.data
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ADMIN — SYSTEM HEALTH
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const getSystemHealth = async (): Promise<SystemHealth> => {
   const res = await api.get("/system/health")
   return res.data
 }
