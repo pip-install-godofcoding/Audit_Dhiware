@@ -50,7 +50,7 @@ export default function FindingsReviewPage() {
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<string>("");
   const [filterSeverity, setFilterSeverity] = useState<"all" | Severity>("all");
-  const [filterReview, setFilterReview] = useState<"all" | ReviewStatus>("all");
+  const [filterReview, setFilterReview] = useState<"all" | ReviewStatus | "reviewed">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showDebate, setShowDebate] = useState(false);
   const [showModifyDrawer, setShowModifyDrawer] = useState(false);

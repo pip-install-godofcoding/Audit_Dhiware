@@ -63,7 +63,7 @@ export function AuditorProgress() {
           newLogs.push({
             id: `eval-${Date.now()}`,
             status: 'loading',
-            message: `Evaluating ${status.current_control}...`
+            message: `Evaluating ${status.currentControl}...`
           });
 
           // Add some info logs to simulate retrieval
