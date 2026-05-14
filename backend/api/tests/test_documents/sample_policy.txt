@@ -1,0 +1,28 @@
+INFORMATION SECURITY POLICY
+Version 2.1 — Effective January 2025
+
+1. ACCESS CONTROL POLICY
+An access control policy has been established and documented. Access to systems and applications 
+is controlled by a secure log-on procedure including multi-factor authentication (MFA).
+All user access rights are reviewed quarterly (every 90 days) by asset owners.
+
+2. CRYPTOGRAPHIC CONTROLS
+AES-256 encryption is used for all data at rest containing PII. TLS 1.3 is enforced for data in transit.
+Key management procedures follow NIST SP 800-57 guidelines.
+
+3. INCIDENT RESPONSE
+Management responsibilities and procedures have been established to ensure quick, effective, 
+and orderly response to information security incidents. The incident response team conducts 
+tabletop exercises quarterly.
+
+4. VULNERABILITY MANAGEMENT
+Vulnerability scans are performed monthly using Nessus. Critical vulnerabilities are remediated 
+within 48 hours. All findings are tracked in Jira.
+
+5. BUSINESS CONTINUITY
+Recovery Time Objective (RTO): 4 hours. Recovery Point Objective (RPO): 1 hour.
+Business continuity plans are tested annually. Backups are verified weekly.
+
+6. SECURE DEVELOPMENT
+All developers follow OWASP Top 10 guidelines. Code reviews are mandatory before deployment.
+Static analysis (SAST) runs in CI/CD pipeline. No known critical vulnerabilities in production.

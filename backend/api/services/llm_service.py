@@ -26,7 +26,7 @@ from config import settings
 log = structlog.get_logger()
 
 # Timeout for local LLM calls (can be slow on CPU)
-LLM_TIMEOUT = 120.0
+LLM_TIMEOUT = 600.0
 
 
 async def _call_llm(
@@ -69,6 +69,56 @@ async def _call_llm(
         data = response.json()
 
     return data["choices"][0]["message"]["content"]
+
+
+async def _call_llm_stream(
+    prompt: str,
+    model: str | None = None,
+    system_prompt: str | None = None,
+    temperature: float = 0.3,
+    max_tokens: int = 1024,
+):
+    """
+    Stream tokens from the local LLM as they are generated.
+    Yields individual text chunks for real-time WebSocket delivery.
+    """
+    model = model or settings.llm_model
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    body = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+
+    async with httpx.AsyncClient(timeout=LLM_TIMEOUT) as client:
+        async with client.stream(
+            "POST",
+            f"{settings.llm_base_url}/chat/completions",
+            json=body,
+            headers={"Content-Type": "application/json"},
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line.strip() or line.strip() == "data: [DONE]":
+                    continue
+                # SSE format: "data: {...}"
+                if line.startswith("data: "):
+                    line = line[6:]
+                try:
+                    chunk = json.loads(line)
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        yield content
+                except (json.JSONDecodeError, IndexError, KeyError):
+                    continue
 
 
 def _extract_json(text: str) -> dict:
@@ -117,30 +167,49 @@ class LLMService:
             for c in chunks
         ])
 
-        prompt = f"""You are a cybersecurity auditor evaluating evidence for a compliance control.
+        prompt = f"""You are a STRICT cybersecurity compliance auditor performing a formal control evaluation.
+Your job is to determine whether the provided evidence FULLY satisfies the control requirement.
+You must be SKEPTICAL — do not assume compliance without explicit proof.
 
-CONTROL: {control['id']} — {control['name']}
+CONTROL ID: {control['id']}
+CONTROL NAME: {control['name']}
 REQUIREMENT: {control['description']}
 
-EVIDENCE RETRIEVED FROM DOCUMENTS:
+EVIDENCE RETRIEVED FROM ORGANIZATION'S DOCUMENTS:
 {context}
 
-Evaluate whether the evidence satisfies this control.
-Respond ONLY with valid JSON in this exact format:
+EVALUATION RUBRIC — Apply these rules strictly:
+
+1. "covered" — Use ONLY when ALL of the following are true:
+   - The evidence EXPLICITLY addresses every aspect of the requirement
+   - Specific procedures, tools, or configurations are named
+   - There is no ambiguity about implementation
+   - Evidence is clearly current (not outdated)
+
+2. "partial" — Use when ANY of the following are true:
+   - Evidence addresses some but not all aspects of the requirement
+   - Evidence uses vague language like "should", "may", "as needed"
+   - Policy exists but no evidence of implementation or enforcement
+   - Evidence mentions the topic but lacks specifics
+
+3. "gap" — Use when ANY of the following are true:
+   - No evidence directly addresses this control requirement
+   - Evidence is about a completely different topic
+   - Only tangentially related content found
+
+4. "stale" — Use when:
+   - Evidence references dates more than 12 months old
+   - Policy has not been reviewed or updated recently
+
+DEFAULT TO "partial" WHEN IN DOUBT. Do NOT give "covered" unless evidence is strong and specific.
+
+Respond ONLY with valid JSON:
 {{
   "status": "covered" or "partial" or "gap" or "stale",
   "confidence": a number between 0.0 and 1.0,
-  "source": "document name and section that most directly addresses this control",
-  "remediation": "plain English remediation if status is not covered, otherwise null"
-}}
-
-Rules:
-- covered: All evidence is present and current
-- partial: Some evidence exists but incomplete or ambiguous
-- gap: Required by framework, no relevant evidence found
-- stale: Evidence exists but is more than 12 months old
-- confidence must reflect actual evidence quality
-- remediation must be specific and actionable, max 2 sentences"""
+  "source": "exact document name and section cited as evidence",
+  "remediation": "specific actionable remediation if not covered, otherwise null"
+}}"""
 
         try:
             raw = await _call_llm(
@@ -294,19 +363,18 @@ Respond with JSON:
                 },
             }
 
-    # ── 3. Copilot Chat ────────────────────────────────────────────────────
+    # ── 3. Copilot Chat (Personalized) ───────────────────────────────────
 
     async def copilot_chat(self, messages: list[dict], context: str = "") -> str:
         """
-        Auditor copilot chatbot powered by local Mistral.
-        Answers compliance questions with awareness of the current audit context.
+        Personalized auditor copilot with full platform awareness.
+        Uses structured system prompt with conversation memory.
         """
-        system_prompt = f"""You are an expert cybersecurity compliance auditor assistant for the Dhiware Compliance Intelligence Platform.
-Help auditors understand findings, interpret controls, and suggest remediations.
-Be concise, precise, and cite specific standards when relevant.
-Current audit context: {context}"""
+        from services.copilot_prompts import COPILOT_SYSTEM_PROMPT
 
-        # Build the conversation as a single prompt for the local LLM
+        system_prompt = COPILOT_SYSTEM_PROMPT.format(context=context or "General compliance assistance")
+
+        # Build conversation with proper role labels
         conversation = ""
         for msg in messages:
             role = "User" if msg["role"] == "user" else "Assistant"
@@ -320,7 +388,7 @@ Current audit context: {context}"""
                 model=settings.llm_model,
                 system_prompt=system_prompt,
                 temperature=0.3,
-                max_tokens=500,
+                max_tokens=800,
             )
             return reply.strip()
 
@@ -332,5 +400,82 @@ Current audit context: {context}"""
                 "You can check with: docker logs ollama"
             )
 
+    # ── 4. Explain Finding ─────────────────────────────────────────────────
+
+    async def explain_finding(self, finding: dict) -> str:
+        """Generate a plain-English explanation of a compliance finding."""
+        from services.copilot_prompts import FINDINGS_EXPLANATION_PROMPT
+
+        prompt = FINDINGS_EXPLANATION_PROMPT.format(
+            control_id=finding.get("controlId", "Unknown"),
+            control_name=finding.get("controlName", "Unknown"),
+            framework=", ".join(finding.get("frameworks", ["Unknown"])),
+            status=finding.get("status", "unknown"),
+            confidence=finding.get("confidence", 0.5),
+            severity=finding.get("severity", "medium"),
+            source=finding.get("source", "No source available"),
+            remediation=finding.get("remediation", "No remediation provided"),
+        )
+
+        try:
+            return await _call_llm(
+                prompt=prompt,
+                model=settings.llm_model,
+                temperature=0.2,
+                max_tokens=600,
+            )
+        except Exception as e:
+            log.error("explain_finding_failed", error=str(e))
+            return f"Unable to explain finding {finding.get('controlId')}. LLM unavailable."
+
+    # ── 5. Suggest Remediation ─────────────────────────────────────────────
+
+    async def suggest_remediation(self, finding: dict, evidence_summary: str = "") -> str:
+        """Generate specific remediation steps for a compliance gap."""
+        from services.copilot_prompts import REMEDIATION_PROMPT
+
+        prompt = REMEDIATION_PROMPT.format(
+            control_id=finding.get("controlId", "Unknown"),
+            control_name=finding.get("controlName", "Unknown"),
+            framework=", ".join(finding.get("frameworks", ["Unknown"])),
+            status=finding.get("status", "gap"),
+            evidence_summary=evidence_summary or "No evidence currently available",
+        )
+
+        try:
+            return await _call_llm(
+                prompt=prompt,
+                model=settings.llm_model,
+                temperature=0.3,
+                max_tokens=800,
+            )
+        except Exception as e:
+            log.error("suggest_remediation_failed", error=str(e))
+            return "Unable to generate remediation. LLM unavailable."
+
+    # ── 6. Cross-Framework Mapping ─────────────────────────────────────────
+
+    async def map_control_across_frameworks(self, control_id: str, control_name: str, source_framework: str) -> str:
+        """Map a control across ISO 27001, SOC 2, NIST, PCI DSS."""
+        from services.copilot_prompts import CROSS_FRAMEWORK_MAPPING_PROMPT
+
+        prompt = CROSS_FRAMEWORK_MAPPING_PROMPT.format(
+            control_id=control_id,
+            control_name=control_name,
+            source_framework=source_framework,
+        )
+
+        try:
+            return await _call_llm(
+                prompt=prompt,
+                model=settings.llm_model,
+                temperature=0.2,
+                max_tokens=600,
+            )
+        except Exception as e:
+            log.error("cross_framework_mapping_failed", error=str(e))
+            return "Unable to map control. LLM unavailable."
+
 
 llm_service = LLMService()
+

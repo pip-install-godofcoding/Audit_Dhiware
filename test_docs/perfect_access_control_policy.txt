@@ -1,0 +1,20 @@
+# Access Control Policy
+**Document ID:** SEC-AC-001
+**Version:** 2.4
+**Last Reviewed:** May 1, 2026
+**Owner:** Head of Information Security
+
+## 1. Purpose
+The purpose of this policy is to establish strict guidelines for access control across all company systems, ensuring compliance with ISO 27001 and NIST frameworks.
+
+## 2. Principle of Least Privilege
+All user accounts, including administrative accounts, must be provisioned using the principle of least privilege. Users will only be granted the minimum access rights necessary to perform their job functions. 
+
+## 3. Access Reviews
+Access rights for all systems and applications must be reviewed formally on a quarterly basis by the system owner. Any orphaned accounts or unnecessary privileges must be revoked within 24 hours of the review.
+
+## 4. Multi-Factor Authentication (MFA)
+Multi-factor authentication (MFA) is strictly mandated and technically enforced for all remote access to the corporate network, including VPNs, and for access to all critical systems handling customer data.
+
+## 5. Termination Procedures
+Upon termination of employment, HR must notify IT immediately. All access rights, physical tokens, and logical accounts must be disabled within 1 hour of the termination event.

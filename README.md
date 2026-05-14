@@ -44,15 +44,58 @@ The following routes are currently configured in `src/App.tsx` but point to a pl
 
 ---
 
-## 🔌 API Contracts & Backend Integration
+## 🚀 How to Run the Platform Locally
 
-The frontend currently relies on an artificial latency API layer defined in `src/api/mock.ts`. Backend engineers should review this file and mirror the exported TypeScript interfaces when wiring up the live API.
+The platform is a fully containerized, microservices architecture that runs locally using Docker Compose.
 
-**Key Contracts to Implement:**
-*   `mockLogin`: Validates credentials and returns JWT + User Role (`user`, `auditor`, `admin`).
-*   `mockGetDocuments`: Returns the corpus of uploaded evidence and their current PII masking status.
-*   `mockRunAudit(config: AuditConfig)`: Initiates the async audit pipeline and returns a tracking ID.
-*   `mockGetAuditStatus(auditId)`: Polled by the frontend to drive the Progress screen and terminal feed.
-*   `mockUpdateFinding`: Receives auditor overrides (Accept, Reject, Modify) to retrain the model/update the DB.
+### Prerequisites
+*   Docker & Docker Compose installed
+*   At least 16GB of system RAM (to run the local Llama 3.1 LLM)
+*   Node.js v18+ (for frontend development)
 
-Shared frontend types (e.g., `Severity`, `FindingStatus`, `Document`) are strictly defined in `src/types/index.ts`. All new API payloads must conform to these types.
+### 1. Start the Backend Infrastructure
+The backend consists of PostgreSQL (with pgvector), Redis, MinIO, OPA, FastAPI backend, Celery workers, and a local Ollama server running `llama3.1` (8B) and `all-MiniLM-L6-v2` embeddings.
+
+```bash
+# Clone the repository and navigate to the project root
+git clone <your-repo-url>
+cd <repo-folder>
+
+# Spin up the entire infrastructure (this will pull the models and build the images)
+docker compose up -d --build
+```
+*Note: The first time you run this, it will take several minutes to download the Llama 3.1 model (~4.7GB) into the Ollama container.*
+
+### 2. Start the Frontend Application
+While the backend handles the AI, vector storage, and APIs, the frontend is a Vite + React application.
+
+```bash
+# Install dependencies
+npm install
+
+# Start the dev server
+npm run dev
+```
+
+The application will be available at `http://localhost:5174/`.
+
+### 3. Default Credentials
+To log in as the Auditor and test the system, use the seeded admin credentials:
+*   **Email:** `admin@dhiware.com`
+*   **Password:** `admin123`
+
+---
+
+## 🧠 AI Architecture (Fully Local)
+
+This platform does **not** rely on external Cloud APIs (like OpenAI) to ensure complete data privacy and compliance.
+
+*   **Embedding Engine**: `all-MiniLM-L6-v2` (384-dim) baked directly into the ingestion service to securely vectorize your compliance documents.
+*   **Auditor Engine**: `Llama-3.1-8B` running via Ollama. It acts as the strict compliance auditor, evaluating RAG context against NIST/ISO frameworks.
+*   **Adversarial Tribunal**: A multi-agent debate (Prosecutor vs. Defender vs. Judge) that triggers when compliance gaps are found to eliminate false positives and generate actionable remediation steps.
+
+## 📁 Test Documents
+We have included three sample documents in the `/test_docs` folder to test the AI's capabilities:
+1.  `perfect_access_control_policy.txt`: Should pass all controls.
+2.  `terrible_password_policy.txt`: Should trigger High severity gaps.
+3.  `stale_backup_policy.txt`: Should trigger Stale/Partial findings.

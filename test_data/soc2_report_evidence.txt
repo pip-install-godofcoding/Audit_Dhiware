@@ -1,0 +1,17 @@
+# ACME Corp - System and Organization Controls (SOC 2) Type II Report
+Audit Period: Jan 1, 2025 to Dec 31, 2025
+
+## CC6.1 - Logical Access
+The company utilizes Multi-Factor Authentication (MFA) across all production infrastructure. MFA enforcement was last tested and verified on March 15, 2025. 
+Note: Development environments currently do not mandate MFA for third-party contractors.
+
+## CC6.3 - Access Reviews
+Access reviews for privileged systems are supposed to be conducted quarterly. 
+Evidence collected: The most recent access review documented in our ticketing system (JIRA-8992) is dated August 2024. No access reviews were recorded for Q4 2025.
+
+## CC7.2 - Vulnerability Scans
+Internal and external vulnerability scans are executed.
+Evidence collected: Scans are run monthly via Nessus. The last recorded scan was completed on November 5, 2025.
+
+## A1.2 - Business Continuity
+The organization lacks a formalized Business Continuity Plan (BCP) or Disaster Recovery Plan (DRP). RTO and RPO targets have not been formally documented or approved by management.

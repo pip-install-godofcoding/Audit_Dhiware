@@ -1,0 +1,120 @@
+DHIWARE TECHNOLOGIES PVT LTD
+ACCESS CONTROL POLICY
+Document ID: DH-POL-AC-2025-001
+Version: 3.2 | Classification: Internal | Effective Date: January 15, 2025
+Approved by: Chief Information Security Officer (CISO)
+
+1. PURPOSE AND SCOPE
+
+This policy establishes the requirements for controlling access to Dhiware Technologies'
+information systems, networks, and data assets. It applies to all employees, contractors,
+third-party vendors, and temporary staff who access company information resources.
+
+2. ACCESS CONTROL FRAMEWORK
+
+2.1 Principle of Least Privilege
+All access rights shall be granted based on the principle of least privilege. Users shall
+only be granted the minimum level of access necessary to perform their job functions.
+Access requests must be approved by the asset owner and the user's direct manager.
+
+2.2 Role-Based Access Control (RBAC)
+The organization implements role-based access control across all critical systems.
+Access roles are defined in the IAM system (Okta) and mapped to job functions.
+Role definitions are reviewed quarterly by the Security Operations team.
+
+2.3 Segregation of Duties
+Critical business processes implement segregation of duties to prevent fraud.
+No single individual shall have the ability to initiate, approve, and execute
+financial transactions or system changes without independent oversight.
+
+3. USER ACCESS MANAGEMENT
+
+3.1 User Registration and De-registration
+- New user accounts are provisioned through the HR onboarding workflow in ServiceNow.
+- Account creation requires manager approval and Security team verification.
+- Upon termination, HR triggers automatic account deactivation within 4 hours.
+- Contractor accounts are automatically disabled upon contract end date.
+
+3.2 Review of User Access Rights
+- Standard user access rights are reviewed every 180 days by asset owners.
+- Privileged account access is reviewed every 90 days by the Security Operations team.
+- Access reviews are conducted through the Sailpoint IGA platform.
+- Non-responsive reviews result in automatic access suspension after 14 days.
+
+3.3 Privileged Access Management
+- All privileged accounts use CyberArk PAM for credential vaulting.
+- Privileged sessions are recorded and retained for 12 months.
+- Emergency break-glass procedures require dual authorization.
+- Service accounts are rotated every 60 days.
+
+4. AUTHENTICATION REQUIREMENTS
+
+4.1 Multi-Factor Authentication (MFA)
+- MFA is mandatory for all remote access, VPN connections, and cloud services.
+- MFA is enforced using Okta Verify (push notification) or hardware FIDO2 keys.
+- SMS-based OTP is prohibited due to SIM-swapping vulnerabilities.
+- MFA exceptions require CISO approval and are reviewed monthly.
+
+4.2 Password Policy
+- Minimum length: 14 characters
+- Complexity: Must include uppercase, lowercase, numbers, and special characters
+- Maximum age: 90 days
+- Password history: Last 24 passwords cannot be reused
+- Account lockout: After 5 failed attempts, locked for 30 minutes
+
+4.3 Secure Log-on Procedures
+- All production systems require SSH key-based authentication.
+- Interactive root/admin login is disabled on all servers.
+- Session timeout: 15 minutes of inactivity for standard users, 5 minutes for privileged.
+- Failed login attempts are logged and alerted to SOC after 3 consecutive failures.
+
+5. NETWORK ACCESS CONTROL
+
+5.1 Network Segmentation
+- Production, staging, and development environments are isolated via VLANs.
+- Database servers are in a private subnet with no direct internet access.
+- Network access between segments requires firewall rule approval.
+- Zero Trust Network Architecture (ZTNA) is implemented for remote workers.
+
+5.2 Wireless Access
+- Corporate WiFi uses WPA3-Enterprise with certificate-based authentication.
+- Guest WiFi is isolated from the corporate network.
+- Rogue access point detection is enabled on all floors.
+
+6. APPLICATION AND SYSTEM ACCESS
+
+6.1 API Access Controls
+- All APIs require OAuth 2.0 / JWT token-based authentication.
+- API rate limiting: 1000 requests per minute per client.
+- API keys are rotated every 90 days.
+- Deprecated APIs are sunset with 90 days notice.
+
+6.2 Database Access
+- Direct database access is restricted to DBAs only.
+- Application database access uses service accounts with read/write restrictions.
+- All database queries are logged for audit purposes.
+- Database credentials are stored in HashiCorp Vault.
+
+7. MONITORING AND AUDIT
+
+- All access events are logged to the centralized SIEM (Splunk Enterprise).
+- Access anomalies trigger automated alerts to the SOC.
+- Monthly access reports are generated and reviewed by department heads.
+- Annual penetration testing includes access control bypass attempts.
+
+8. COMPLIANCE MAPPING
+
+This policy addresses the following regulatory requirements:
+- ISO 27001:2022 — A.9.1.1, A.9.2.1, A.9.2.5, A.9.4.2
+- SOC 2 Type II — CC6.1, CC6.3
+- NIST CSF — PR.AC-1, PR.AC-4
+- PCI DSS 4.0 — Requirement 7, Requirement 8
+
+9. POLICY REVIEW
+
+This policy is reviewed annually or upon significant changes to the threat landscape.
+Last review: January 15, 2025
+Next scheduled review: January 15, 2026
+
+Document Owner: Information Security Department
+Contact: security@dhiware.com

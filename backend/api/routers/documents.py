@@ -45,11 +45,13 @@ async def get_documents(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Document)
-        .where(Document.uploaded_by == current_user.id)
-        .order_by(Document.uploaded_at.desc())
-    )
+    query = select(Document).order_by(Document.uploaded_at.desc())
+    
+    # If standard user, restrict to their own documents
+    if current_user.role == "user":
+        query = query.where(Document.uploaded_by == current_user.id)
+        
+    result = await db.execute(query)
     docs = result.scalars().all()
     return [doc_to_response(d) for d in docs]
 

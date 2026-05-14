@@ -1,0 +1,18 @@
+# Data Backup Policy
+Version 1.0
+Author: Sysadmin Dave
+Date: October 14, 2022
+
+## Backup Strategy
+All core production databases are backed up to the secondary data center on a nightly basis at 2:00 AM EST.
+The backup process uses standard pg_dump tools.
+
+## Retention
+Backups are retained on disk for 30 days. After 30 days, they are moved to cold tape storage and kept for 7 years.
+
+## Testing
+We will test the restoration of these backups at least once per year to ensure data integrity. The last test was performed in December 2022 and was successful.
+
+## Cryptography
+Backups are stored using AES-128 encryption. 
+Note: We plan to upgrade to AES-256 sometime in 2024 when we upgrade the storage array.

@@ -30,23 +30,35 @@ services:
       - miniodata:/data
 
   opa:
-    image: openpolicyagent/opa:latest
+    image: openpolicyagent/opa:0.58.0
     ports: ["8181:8181"]
     command: run --server --addr 0.0.0.0:8181 /policies
     volumes:
       - ./backend/policies:/policies
 
-  # ── Local LLM (Ollama — runs Llama 3.1 / Mistral locally) ────────────
+  # ── Local LLM (Ollama — runs Llama 3.1 8B locally) ─────────────────────
   ollama:
     image: ollama/ollama:latest
     ports: ["11434:11434"]
+    environment:
+      OLLAMA_KEEP_ALIVE: "-1"   # Never unload models from memory
     volumes:
       - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        limits:
+          memory: 6G
     entrypoint: >
       sh -c "ollama serve &
              sleep 5 &&
-             ollama pull mistral &&
+             ollama pull llama3.1 &&
              wait"
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list | grep -q llama3.1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
 
   api:
     build: ./backend/api
@@ -63,9 +75,10 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/1
       INGEST_SERVICE_URL: http://ingest:8001
       LLM_BASE_URL: http://ollama:11434/v1
-      LLM_MODEL: mistral
+      LLM_MODEL: llama3.1
       LLM_JUDGE_MODEL: llama3.1
-      EMBEDDING_MODEL: BAAI/bge-m3
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+      HF_ENDPOINT: https://hf-mirror.com
     depends_on: [postgres, redis, minio, opa, ingest, ollama]
     volumes:
       - ./backend/api:/app
@@ -83,9 +96,11 @@ services:
       MINIO_BUCKET: compliance-docs
       OPA_URL: http://opa:8181
       LLM_BASE_URL: http://ollama:11434/v1
-      LLM_MODEL: mistral
+      LLM_MODEL: llama3.1
       LLM_JUDGE_MODEL: llama3.1
-      EMBEDDING_MODEL: BAAI/bge-m3
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+      HF_ENDPOINT: https://hf-mirror.com
+      SECRET_KEY: super-secret-jwt-key-change-in-production
     depends_on: [postgres, redis, minio, ollama]
     volumes:
       - ./backend/api:/app
@@ -100,7 +115,8 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin123
       MINIO_BUCKET: compliance-docs
-      EMBEDDING_MODEL: BAAI/bge-m3
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+      HF_ENDPOINT: https://hf-mirror.com
     depends_on: [postgres, minio]
     volumes:
       - ./backend/ingest-service:/app

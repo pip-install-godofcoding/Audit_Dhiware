@@ -6,7 +6,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from routers import auth, documents, audits, findings, admin, copilot
+from routers import auth, documents, audits, findings, admin, copilot, copilot_ws
 
 log = structlog.get_logger()
 
@@ -41,6 +41,7 @@ app.include_router(audits.router, prefix="/api/v1/audits", tags=["audits"])
 app.include_router(findings.router, prefix="/api/v1", tags=["findings"])
 app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
 app.include_router(copilot.router, prefix="/api/v1/copilot", tags=["copilot"])
+app.include_router(copilot_ws.router, prefix="/api/v1/copilot", tags=["copilot-ws"])
 
 
 @app.get("/health", tags=["health"])

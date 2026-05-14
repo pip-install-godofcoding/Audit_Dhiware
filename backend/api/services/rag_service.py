@@ -80,7 +80,9 @@ class RAGService:
             score = float(row.cosine_score)
 
             if use_decay and row.created_at:
-                months_old = (datetime.utcnow() - row.created_at).days / 30.0
+                # Ensure both are offset-naive for safe subtraction
+                created_at_naive = row.created_at.replace(tzinfo=None)
+                months_old = (datetime.utcnow() - created_at_naive).days / 30.0
                 decay_lambda = row.decay_lambda if row.decay_lambda else 0.08
                 decay = math.exp(-decay_lambda * months_old)
                 score = score * decay

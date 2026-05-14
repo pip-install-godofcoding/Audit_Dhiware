@@ -1,5 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Download, Share2, FileSpreadsheet, FileJson, AlertTriangle, Loader2, Check } from 'lucide-react';
+import { getFindings, getAuditStatus } from '../../api/client';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
 // TYPES
 type Severity = "high" | "medium" | "low";
@@ -26,18 +31,6 @@ interface CoverageDomain {
   total: number;
   covered: number;
 }
-
-// Report data — loaded from the last completed audit
-const REPORT_METADATA = {
-  auditId: "audit-1746518400000",
-  runAt: "6 May 2026, 14:23",
-  documents: ["vendor_contract_2026.pdf", "security_policy_v4.docx", "soc2_report_2026.pdf"],
-  frameworks: ["ISO 27001", "NIST CSF 2.0"],
-  totalControls: 114,
-  duration: "4 minutes 12 seconds",
-  totalCost: "$12.40",
-};
-
 const COVERAGE_DOMAINS: CoverageDomain[] = [
   { name: "Access Control", percentage: 87, total: 24, covered: 21 },
   { name: "Vendor Risk", percentage: 78, total: 18, covered: 14 },
@@ -47,16 +40,24 @@ const COVERAGE_DOMAINS: CoverageDomain[] = [
   { name: "Vulnerability Mgmt", percentage: 67, total: 12, covered: 8 },
 ];
 
-const REPORT_FINDINGS: ReportFinding[] = [
-  { id: "GAP-001", controlId: "A.9.2.5", controlName: "Review of user access rights", severity: "high", status: "gap", reviewStatus: "accepted", confidence: 0.88, frameworks: ["ISO A.9.2.5", "NIST AC-2(7)", "SOC2 CC6.3"], source: "security_policy.pdf §4.2 + soc2_report.pdf CC6.3", remediation: "Conduct and document quarterly access reviews immediately." },
-  { id: "GAP-002", controlId: "A.10.1.1", controlName: "Policy on use of cryptographic controls", severity: "high", status: "gap", reviewStatus: "accepted", confidence: 0.92, frameworks: ["ISO A.10.1.1", "NIST SC-28"], source: "security_policy.pdf §6.1", remediation: "Add encryption at rest attestation to next SOC audit." },
-  { id: "GAP-003", controlId: "A.17.1.1", controlName: "Planning information security continuity", severity: "medium", status: "gap", reviewStatus: "accepted", confidence: 0.95, frameworks: ["ISO A.17.1.1", "SOC2 A1.2"], source: "soc2_report.pdf A1.2", remediation: "Document RTO/RPO targets and test recovery procedures." },
-  { id: "GAP-004", controlId: "A.12.6.1", controlName: "Management of technical vulnerabilities", severity: "low", status: "stale", reviewStatus: "pending", confidence: 0.71, frameworks: ["NIST RA-5"], source: "soc2_report.pdf CC7.2", remediation: "Schedule overdue vulnerability scan." },
-  { id: "GAP-005", controlId: "A.9.4.2", controlName: "Secure log-on procedures", severity: "medium", status: "partial", reviewStatus: "modified", confidence: 0.67, frameworks: ["ISO A.9.4.2", "NIST AC-17"], source: "soc2_report.pdf CC6.1", remediation: "Re-test MFA across all systems.", auditorComment: "MFA confirmed present but evidence is outdated. Marking as medium priority." },
-];
-
 export default function ReportViewerPage() {
+  const [searchParams] = useSearchParams();
+  const auditId = searchParams.get("auditId");
+
   // STATE
+  const [findings, setFindings] = useState<ReportFinding[]>([]);
+  const [metadata, setMetadata] = useState<any>({
+    auditId: auditId || "",
+    runAt: new Date().toLocaleDateString(),
+    documents: [],
+    frameworks: [],
+    totalControls: 0,
+    duration: "—",
+    totalCost: "—",
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [filterSeverity, setFilterSeverity] = useState<"all" | Severity>("all");
   const [filterReview, setFilterReview] = useState<"all" | ReviewStatus>("all");
   const [sortField, setSortField] = useState<"severity" | "confidence" | "id">("severity");
@@ -65,15 +66,65 @@ export default function ReportViewerPage() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [showShareToast, setShowShareToast] = useState(false);
 
+  // FETCH DATA
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!auditId) {
+        setError("No audit ID specified.");
+        setLoading(false);
+        return;
+      }
+      try {
+        setLoading(true);
+        const [findingsData, statusData] = await Promise.all([
+          getFindings(auditId),
+          getAuditStatus(auditId).catch(() => null)
+        ]);
+
+        const mappedFindings: ReportFinding[] = findingsData.map((f: any) => ({
+          id: f.id,
+          controlId: f.controlId || f.control_id || "—",
+          controlName: f.controlName || f.control_name || "—",
+          severity: (f.severity || f.aiSeverity || f.ai_severity || "medium") as Severity,
+          status: (f.status || f.aiStatus || f.ai_status || "gap") as FindingStatus,
+          reviewStatus: (f.reviewStatus || f.review_status || "pending") as ReviewStatus,
+          confidence: f.confidence || 0,
+          frameworks: f.frameworks || [],
+          source: (f.evidenceChunks && f.evidenceChunks.length > 0) ? f.evidenceChunks[0].sourceDoc : "Unknown",
+          remediation: f.remediation || "—",
+          auditorComment: f.auditorComment || f.auditor_comment || "",
+        }));
+
+        setFindings(mappedFindings);
+        
+        setMetadata({
+          auditId,
+          runAt: new Date().toLocaleDateString(),
+          documents: ["Multiple files"],
+          frameworks: Array.from(new Set(mappedFindings.flatMap(f => f.frameworks))),
+          totalControls: statusData ? statusData.totalControls : mappedFindings.length,
+          duration: "Real-time",
+          totalCost: "—",
+        });
+
+      } catch (err: any) {
+        setError("Failed to load live report data.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [auditId]);
+
   // DERIVED
   const overallScore = Math.round(COVERAGE_DOMAINS.reduce((sum, d) => sum + d.percentage, 0) / COVERAGE_DOMAINS.length);
-  const highCount = REPORT_FINDINGS.filter(f => f.severity === "high").length;
-  const mediumCount = REPORT_FINDINGS.filter(f => f.severity === "medium").length;
-  const lowCount = REPORT_FINDINGS.filter(f => f.severity === "low").length;
-  const pendingReview = REPORT_FINDINGS.filter(f => f.reviewStatus === "pending").length;
+  const highCount = findings.filter(f => f.severity === "high").length;
+  const mediumCount = findings.filter(f => f.severity === "medium").length;
+  const lowCount = findings.filter(f => f.severity === "low").length;
+  const pendingReview = findings.filter(f => f.reviewStatus === "pending").length;
 
   const filteredFindings = useMemo(() => {
-    let result = [...REPORT_FINDINGS];
+    let result = [...findings];
     
     // Filter
     if (filterSeverity !== "all") {
@@ -99,14 +150,217 @@ export default function ReportViewerPage() {
     });
     
     return result;
-  }, [filterSeverity, filterReview, sortField, sortDir]);
+  }, [findings, filterSeverity, filterReview, sortField, sortDir]);
 
-  // HANDLERS
+  // HELPERS
+  const triggerBlobDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── PDF DOWNLOAD ─────────────────────────────────────────
   const handleDownloadPDF = () => {
     setIsDownloading(true);
-    setTimeout(() => {
+    try {
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const margin = 14;
+      let y = 20;
+
+      // Title
+      doc.setFontSize(22);
+      doc.setTextColor(30, 30, 30);
+      doc.text("Compliance Audit Report", margin, y);
+      y += 10;
+
+      // Subtitle / metadata
+      doc.setFontSize(10);
+      doc.setTextColor(120, 120, 120);
+      doc.text(`Audit ID: ${metadata.auditId || "—"}`, margin, y);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, pageW - margin, y, { align: "right" });
+      y += 6;
+      doc.text(`Frameworks: ${metadata.frameworks.join(", ") || "—"}`, margin, y);
+      doc.text(`Controls: ${metadata.totalControls}`, pageW - margin, y, { align: "right" });
+      y += 8;
+
+      // Divider
+      doc.setDrawColor(200, 200, 200);
+      doc.line(margin, y, pageW - margin, y);
+      y += 6;
+
+      // Summary cards
+      doc.setFontSize(12);
+      doc.setTextColor(30, 30, 30);
+      doc.text("Executive Summary", margin, y);
+      y += 7;
+      doc.setFontSize(10);
+      doc.setTextColor(80, 80, 80);
+      doc.text(`Overall Coverage Score: ${overallScore}%`, margin, y); y += 5;
+      doc.text(`Total Findings: ${findings.length}    |    High: ${highCount}    |    Medium: ${mediumCount}    |    Low: ${lowCount}    |    Pending Review: ${pendingReview}`, margin, y);
+      y += 10;
+
+      // Coverage domains
+      doc.setFontSize(12);
+      doc.setTextColor(30, 30, 30);
+      doc.text("Coverage by Domain", margin, y);
+      y += 3;
+
+      autoTable(doc, {
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: [["Domain", "Coverage", "Covered", "Total"]],
+        body: COVERAGE_DOMAINS.map(d => [
+          d.name,
+          `${d.percentage}%`,
+          String(d.covered),
+          String(d.total),
+        ]),
+        theme: "grid",
+        headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: "bold", fontSize: 9 },
+        bodyStyles: { fontSize: 8, textColor: [50, 50, 50] },
+        alternateRowStyles: { fillColor: [245, 245, 255] },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 10;
+
+      // Findings table
+      doc.setFontSize(12);
+      doc.setTextColor(30, 30, 30);
+      doc.text("All Findings", margin, y);
+      y += 3;
+
+      autoTable(doc, {
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: [["ID", "Control", "Severity", "Status", "Review", "Confidence", "Remediation", "Auditor Comment"]],
+        body: findings.map(f => [
+          f.controlId,
+          f.controlName,
+          f.severity.toUpperCase(),
+          f.status.toUpperCase(),
+          f.reviewStatus.toUpperCase(),
+          `${Math.round(f.confidence * 100)}%`,
+          f.remediation,
+          f.auditorComment || "—",
+        ]),
+        theme: "grid",
+        headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: "bold", fontSize: 8 },
+        bodyStyles: { fontSize: 7, textColor: [50, 50, 50], cellPadding: 2 },
+        alternateRowStyles: { fillColor: [245, 245, 255] },
+        columnStyles: {
+          0: { cellWidth: 18 },
+          1: { cellWidth: 30 },
+          6: { cellWidth: 35 },
+          7: { cellWidth: 30 },
+        },
+      });
+
+      // Footer on every page
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(160, 160, 160);
+        doc.text(
+          `Compliance Intelligence Platform — Page ${i} of ${pageCount}`,
+          pageW / 2, doc.internal.pageSize.getHeight() - 8,
+          { align: "center" }
+        );
+      }
+
+      doc.save(`audit-report-${metadata.auditId || "report"}.pdf`);
+    } catch (err) {
+      console.error("PDF generation failed", err);
+    } finally {
       setIsDownloading(false);
-    }, 1500);
+    }
+  };
+
+  // ── JSON DOWNLOAD ────────────────────────────────────────
+  const handleDownloadJSON = () => {
+    const report = {
+      auditId: metadata.auditId,
+      generatedAt: new Date().toISOString(),
+      metadata: {
+        runAt: metadata.runAt,
+        duration: metadata.duration,
+        totalControls: metadata.totalControls,
+        documents: metadata.documents,
+        frameworks: metadata.frameworks,
+      },
+      summary: { overallScore, totalFindings: findings.length, highSeverity: highCount, mediumSeverity: mediumCount, lowSeverity: lowCount, pendingReview },
+      coverageDomains: COVERAGE_DOMAINS,
+      findings: findings.map(f => ({
+        id: f.id, controlId: f.controlId, controlName: f.controlName,
+        severity: f.severity, status: f.status, reviewStatus: f.reviewStatus,
+        confidence: f.confidence, frameworks: f.frameworks, source: f.source,
+        remediation: f.remediation, auditorComment: f.auditorComment || null,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+    triggerBlobDownload(blob, `audit-report-${metadata.auditId || "unknown"}.json`);
+  };
+
+  // ── EXCEL DOWNLOAD ───────────────────────────────────────
+  const handleDownloadExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Summary
+    const summaryData = [
+      ["Compliance Audit Report"],
+      [],
+      ["Audit ID", metadata.auditId || "—"],
+      ["Generated", new Date().toLocaleString()],
+      ["Frameworks", metadata.frameworks.join(", ")],
+      ["Total Controls", metadata.totalControls],
+      [],
+      ["Overall Score", `${overallScore}%`],
+      ["Total Findings", findings.length],
+      ["High Severity", highCount],
+      ["Medium Severity", mediumCount],
+      ["Low Severity", lowCount],
+      ["Pending Review", pendingReview],
+    ];
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+    summarySheet["!cols"] = [{ wch: 20 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
+
+    // Sheet 2: Coverage
+    const coverageData = [
+      ["Domain", "Coverage %", "Covered", "Total"],
+      ...COVERAGE_DOMAINS.map(d => [d.name, d.percentage, d.covered, d.total]),
+    ];
+    const coverageSheet = XLSX.utils.aoa_to_sheet(coverageData);
+    coverageSheet["!cols"] = [{ wch: 25 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, coverageSheet, "Coverage");
+
+    // Sheet 3: Findings
+    const findingsData = [
+      ["ID", "Control ID", "Control Name", "Severity", "Status", "Review Status", "Confidence", "Frameworks", "Source", "Remediation", "Auditor Comment"],
+      ...findings.map(f => [
+        f.id, f.controlId, f.controlName,
+        f.severity.toUpperCase(), f.status.toUpperCase(), f.reviewStatus.toUpperCase(),
+        `${Math.round(f.confidence * 100)}%`,
+        f.frameworks.join(" | "), f.source, f.remediation, f.auditorComment || "",
+      ]),
+    ];
+    const findingsSheet = XLSX.utils.aoa_to_sheet(findingsData);
+    findingsSheet["!cols"] = [
+      { wch: 12 }, { wch: 14 }, { wch: 30 }, { wch: 10 }, { wch: 10 },
+      { wch: 14 }, { wch: 12 }, { wch: 25 }, { wch: 25 }, { wch: 35 }, { wch: 30 },
+    ];
+    XLSX.utils.book_append_sheet(wb, findingsSheet, "Findings");
+
+    // Write and download
+    const wbOut = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([wbOut], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    triggerBlobDownload(blob, `audit-report-${metadata.auditId || "unknown"}.xlsx`);
   };
 
   const handleShare = () => {
@@ -138,7 +392,7 @@ export default function ReportViewerPage() {
               </div>
               <h1 className="text-2xl font-bold text-gray-900 mt-1">Audit Report</h1>
               <div className="text-sm text-gray-400 mt-0.5">
-                {REPORT_METADATA.runAt} · {REPORT_METADATA.duration}
+                {metadata.runAt} · {metadata.duration}
               </div>
             </div>
             
@@ -151,11 +405,11 @@ export default function ReportViewerPage() {
                 {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                 Download PDF
               </button>
-              <button className="bg-white border border-gray-200 text-gray-700 text-sm px-3 py-2 rounded-lg hover:bg-gray-50 flex items-center gap-2 transition-colors">
+              <button onClick={handleDownloadExcel} className="bg-white border border-gray-200 text-gray-700 text-sm px-3 py-2 rounded-lg hover:bg-gray-50 flex items-center gap-2 transition-colors cursor-pointer">
                 <FileSpreadsheet className="w-4 h-4 text-green-600" />
                 Excel
               </button>
-              <button className="bg-white border border-gray-200 text-gray-700 text-sm px-3 py-2 rounded-lg hover:bg-gray-50 flex items-center gap-2 transition-colors">
+              <button onClick={handleDownloadJSON} className="bg-white border border-gray-200 text-gray-700 text-sm px-3 py-2 rounded-lg hover:bg-gray-50 flex items-center gap-2 transition-colors cursor-pointer">
                 <FileJson className="w-4 h-4 text-amber-500" />
                 JSON
               </button>
@@ -170,9 +424,9 @@ export default function ReportViewerPage() {
           </div>
           
           <div className="mt-4 flex flex-wrap gap-6 text-sm text-gray-500">
-            <span>{REPORT_METADATA.documents.length} documents</span>
-            <span>{REPORT_METADATA.frameworks.join(" · ")}</span>
-            <span>{REPORT_METADATA.totalControls} controls evaluated</span>
+            <span>{metadata.documents.length} documents</span>
+            <span>{metadata.frameworks.join(" · ")}</span>
+            <span>{metadata.totalControls} controls evaluated</span>
             {pendingReview > 0 && (
               <span className="font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md">
                 ⚠ {pendingReview} pending review
@@ -217,7 +471,7 @@ export default function ReportViewerPage() {
           <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
             <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Frameworks</div>
             <div className="flex flex-wrap gap-2">
-              {REPORT_METADATA.frameworks.map(fw => (
+              {metadata.frameworks.map((fw: string) => (
                 <span key={fw} className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded-md font-medium">
                   {fw}
                 </span>
@@ -227,9 +481,9 @@ export default function ReportViewerPage() {
 
           <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm flex flex-col justify-center">
             <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Run details</div>
-            <div className="text-lg font-bold text-gray-900 leading-none">{REPORT_METADATA.totalCost}</div>
-            <div className="text-xs text-gray-400 mt-1">{REPORT_METADATA.duration}</div>
-            <div className="text-xs text-gray-400 mt-0.5">{REPORT_METADATA.documents.length} source documents</div>
+            <div className="text-lg font-bold text-gray-900 leading-none">{metadata.totalCost}</div>
+            <div className="text-xs text-gray-400 mt-1">{metadata.duration}</div>
+            <div className="text-xs text-gray-400 mt-0.5">{metadata.documents.length} source documents</div>
           </div>
 
         </div>
@@ -445,8 +699,8 @@ export default function ReportViewerPage() {
 
           {/* TABLE FOOTER */}
           <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 flex justify-between text-xs text-gray-400 font-medium">
-            <span>Showing {filteredFindings.length} of {REPORT_FINDINGS.length} findings</span>
-            <span>Last updated: {REPORT_METADATA.runAt}</span>
+            <span>Showing {filteredFindings.length} of {findings.length} findings</span>
+            <span>Last updated: {metadata.runAt}</span>
           </div>
 
         </div>

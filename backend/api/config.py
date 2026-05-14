@@ -29,12 +29,13 @@ class Settings(BaseSettings):
     ingest_service_url: str = "http://ingest:8001"
 
     # Local LLM (Ollama / vLLM — OpenAI-compatible API)
+    # Single model for all roles: fast, low-memory, no swapping
     llm_base_url: str = "http://ollama:11434/v1"
-    llm_model: str = "mistral"           # Prosecutor + Defender + Classifier
-    llm_judge_model: str = "llama3.1"    # Judge (heavier model for final verdict)
+    llm_model: str = "llama3.1"           # Classifier + Prosecutor + Defender
+    llm_judge_model: str = "llama3.1"     # Judge (same model for speed)
 
     # Embeddings
-    embedding_model: str = "BAAI/bge-m3"
+    embedding_model: str = "all-MiniLM-L6-v2"
 
     # Chunking
     max_chunk_size: int = 500

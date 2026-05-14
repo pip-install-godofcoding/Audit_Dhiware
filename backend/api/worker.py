@@ -7,8 +7,12 @@ Tasks:
 """
 import asyncio
 import httpx
+import sys
+sys.path.append("/app")
+
 from celery import Celery
 from config import settings
+from tasks.audit_task import run_audit_pipeline
 
 celery_app = Celery(
     "compliance_worker",
@@ -89,7 +93,6 @@ def run_audit(self, audit_id: str):
     Celery task that dispatches the full async audit pipeline.
     The actual logic lives in tasks/audit_task.py.
     """
-    from tasks.audit_task import run_audit_pipeline
     try:
         _run_async(run_audit_pipeline(audit_id))
     except Exception as exc:

@@ -118,3 +118,34 @@ async def get_audit_findings(
     )
     findings = result.scalars().all()
     return [FindingResponse.from_orm_finding(f) for f in findings]
+
+
+@router.get("/{audit_id}/report")
+async def download_audit_report(
+    audit_id: str,
+    format: str = "pdf",
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from fastapi.responses import Response
+
+    result = await db.execute(
+        select(Finding)
+        .where(Finding.audit_id == audit_id)
+        .order_by(Finding.ai_severity.desc())
+    )
+    findings = result.scalars().all()
+
+    report_data = {
+        "audit_id": audit_id,
+        "total_findings": len(findings),
+        "findings": [FindingResponse.from_orm_finding(f).dict() for f in findings]
+    }
+
+    content = json.dumps(report_data, indent=2)
+
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename=audit-report.json"}
+    )

@@ -1,0 +1,19 @@
+# ACME Corp - Information Security Policy
+Date: January 15, 2026
+Author: John Doe
+Contact Email: john.doe@acmecorp.com
+Direct Line: 555-019-8372
+
+## 1. Access Control Policy (ISO A.9)
+All privileged accounts must be reviewed quarterly. When an employee is terminated, their access must be revoked within 24 hours.
+
+If you have issues with access, please contact our IT administrator, Jane Smith, at jane.smith@acmecorp.com or call her personal cell at 555-982-1134.
+
+## 2. Cryptographic Controls (ISO A.10)
+All systems storing personally identifiable information or financial data must utilize encryption at rest. AES-256 or higher is required.
+
+## 3. Incident Response (ISO A.16)
+In the event of a security breach, the incident response team must be notified immediately. The primary contact is Michael Johnson (SSN: 000-12-3456 - for payroll verification only), email: m.johnson@acmecorp.com.
+
+## 4. Vulnerability Management
+Monthly vulnerability scans are required across all production systems. Critical vulnerabilities must be patched within 14 days of discovery.

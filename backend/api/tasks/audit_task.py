@@ -6,11 +6,16 @@ Pipeline:
   2. Filter by selected control domains
   3. For each control:
      a. RAG retrieval (pgvector cosine + confidence decay)
-     b. LLM classification (GPT-4o)
-     c. Adversarial debate for partial/low-confidence findings
+     b. LLM classification (single model)
+     c. Adversarial debate ONLY for partial + low confidence (<0.60)
      d. Persist findings + events to PostgreSQL
      e. Publish progress to Redis (polled by frontend every ~2s)
   4. Mark audit as complete
+
+Speed optimizations:
+  - Debate threshold raised to 0.60 (only truly ambiguous cases)
+  - max_tokens reduced for faster inference
+  - Batch commit (every 5 controls instead of per-control)
 
 Called by the Celery worker via worker.py.
 """
@@ -160,7 +165,8 @@ async def run_audit_pipeline(audit_id: str):
                         debate_result = None
 
                         # ── Step 3: Adversarial Debate (conditional) ──────
-                        threshold = options.get("confidenceThreshold", 0.75)
+                        # Speed optimization: higher threshold = fewer debates
+                        threshold = options.get("confidenceThreshold", 0.60)
                         should_debate = (
                             options.get("adversarialDebate", True)
                             and (

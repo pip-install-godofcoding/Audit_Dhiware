@@ -207,4 +207,73 @@ export const copilotChat = async (messages: { role: string; content: string }[],
   return res.data.response
 }
 
+export const copilotExplain = async (finding: {
+  controlId: string; controlName: string; status: string;
+  severity: string; confidence: number; remediation?: string;
+  source?: string; frameworks?: string[];
+}) => {
+  const res = await api.post("/copilot/explain", finding)
+  return res.data.response
+}
+
+export const copilotRemediate = async (finding: {
+  controlId: string; controlName: string; status: string;
+  frameworks?: string[]; evidenceSummary?: string;
+}) => {
+  const res = await api.post("/copilot/remediate", finding)
+  return res.data.response
+}
+
+export const copilotMapControl = async (controlId: string, controlName: string, sourceFramework: string) => {
+  const res = await api.post("/copilot/map-control", { controlId, controlName, sourceFramework })
+  return res.data.response
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COPILOT — WebSocket (Real-Time Streaming)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface WSMessage {
+  type: "auth_ok" | "auth_error" | "token" | "done" | "action" | "pong"
+  content?: string
+  user?: string
+  error?: string
+  action_type?: string
+  data?: any
+}
+
+export const connectCopilotWS = (
+  onMessage: (msg: WSMessage) => void,
+  onClose?: () => void,
+): WebSocket | null => {
+  const token = localStorage.getItem("auth_token")
+  if (!token) return null
+
+  const ws = new WebSocket("ws://localhost:8000/api/v1/copilot/ws")
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: "auth", token }))
+  }
+
+  ws.onmessage = (event) => {
+    try {
+      const msg: WSMessage = JSON.parse(event.data)
+      onMessage(msg)
+    } catch {
+      // ignore malformed messages
+    }
+  }
+
+  ws.onclose = () => {
+    onClose?.()
+  }
+
+  ws.onerror = () => {
+    onClose?.()
+  }
+
+  return ws
+}
+
 export default api
+

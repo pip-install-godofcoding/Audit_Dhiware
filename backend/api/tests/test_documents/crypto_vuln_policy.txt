@@ -1,0 +1,74 @@
+DHIWARE TECHNOLOGIES PVT LTD
+ENCRYPTION AND CRYPTOGRAPHIC CONTROLS POLICY
+Document ID: DH-POL-CR-2025-002
+Version: 1.4 | Classification: Internal | Effective Date: February 1, 2025
+
+1. DATA AT REST ENCRYPTION
+
+All personally identifiable information (PII) and sensitive business data stored in
+databases, file systems, and backup media shall be encrypted using AES-256-GCM.
+
+- PostgreSQL databases: Transparent Data Encryption (TDE) enabled
+- S3/MinIO object storage: Server-side encryption with customer-managed keys (SSE-CMK)
+- Laptop hard drives: BitLocker (Windows) / FileVault (macOS) mandatory
+- USB storage: Prohibited per DLP policy; exceptions require CISO approval
+
+2. DATA IN TRANSIT ENCRYPTION
+
+- All external-facing APIs enforce TLS 1.3 (TLS 1.2 minimum)
+- Internal service-to-service communication uses mTLS via Istio service mesh
+- Email encryption: S/MIME certificates issued to all employees
+- VPN: WireGuard with Curve25519 key exchange
+
+3. KEY MANAGEMENT
+
+- Encryption keys managed via HashiCorp Vault (Enterprise edition)
+- Key rotation: Every 90 days for data encryption keys
+- Master keys: HSM-backed (AWS CloudHSM) with split knowledge
+- Key access logged and audited monthly
+
+4. VULNERABILITY MANAGEMENT
+
+4.1 Scanning Schedule
+- External perimeter scans: Weekly (Qualys)
+- Internal network scans: Monthly (Nessus Professional)
+- Container image scans: On every CI/CD build (Trivy + Snyk)
+- Web application scans: Monthly (Burp Suite Enterprise)
+
+4.2 Remediation SLAs
+- Critical (CVSS 9.0+): 48 hours
+- High (CVSS 7.0-8.9): 7 days
+- Medium (CVSS 4.0-6.9): 30 days
+- Low (CVSS 0.1-3.9): Next quarterly patch cycle
+
+4.3 Patch Management
+- OS patches: Applied within 14 days of release
+- Critical security patches: Emergency deployment within 48 hours
+- Third-party libraries: Dependabot automated PRs reviewed weekly
+
+5. SECURE DEVELOPMENT
+
+5.1 SDLC Security
+- All developers complete OWASP Top 10 training annually
+- Code reviews are mandatory (minimum 2 reviewers for production code)
+- SAST: SonarQube integrated into CI pipeline
+- DAST: OWASP ZAP scans run against staging environment weekly
+- Secret scanning: GitGuardian monitors all repositories
+
+5.2 Secure Coding Standards
+- Input validation on all user-facing endpoints
+- Parameterized queries mandatory (no string concatenation for SQL)
+- Output encoding for all rendered content
+- CSRF tokens on all state-changing operations
+
+6. COMPLIANCE MAPPING
+
+- ISO 27001:2022 — A.10.1.1 (Cryptographic controls)
+- ISO 27001:2022 — A.12.6.1 (Vulnerability management)
+- ISO 27001:2022 — A.14.2.1 (Secure development)
+- NIST CSF — PR.DS-1 (Data-at-rest protection)
+- NIST CSF — DE.CM-8 (Vulnerability scans)
+- SOC 2 — CC7.2 (Vulnerability monitoring)
+
+Document Owner: Security Engineering Team
+Contact: seceng@dhiware.com

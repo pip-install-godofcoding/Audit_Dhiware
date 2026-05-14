@@ -55,6 +55,11 @@ export default function FindingsReviewPage() {
   const [showDebate, setShowDebate] = useState(false);
   const [showModifyDrawer, setShowModifyDrawer] = useState(false);
 
+  const [modifyDraft, setModifyDraft] = useState<{ severity: Severity; comment: string }>({
+    severity: "medium",
+    comment: ""
+  });
+
   // Fetch findings from backend
   useEffect(() => {
     const fetchData = async () => {
@@ -93,6 +98,28 @@ export default function FindingsReviewPage() {
     fetchData();
   }, [auditId]);
 
+  // DERIVED STATE (Hooks must be before early returns)
+  const filteredFindings = useMemo(() => {
+    return findings.filter(f => {
+      if (filterSeverity !== "all" && f.severity !== filterSeverity) return false;
+      if (filterReview === "pending" && f.reviewStatus !== "pending") return false;
+      if (filterReview === "reviewed" && f.reviewStatus === "pending") return false;
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return f.controlName.toLowerCase().includes(query) || f.controlId.toLowerCase().includes(query);
+      }
+      return true;
+    });
+  }, [findings, filterSeverity, filterReview, searchQuery]);
+
+  const groupedFindings = useMemo(() => {
+    return {
+      high: filteredFindings.filter(f => f.severity === "high"),
+      medium: filteredFindings.filter(f => f.severity === "medium"),
+      low: filteredFindings.filter(f => f.severity === "low"),
+    };
+  }, [filteredFindings]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -125,34 +152,7 @@ export default function FindingsReviewPage() {
 
   const selectedFinding = findings.find(f => f.id === selectedId) || findings[0];
 
-  const [modifyDraft, setModifyDraft] = useState<{ severity: Severity; comment: string }>({
-    severity: selectedFinding.severity,
-    comment: selectedFinding.auditorComment || ""
-  });
-
-  // DERIVED
-  const filteredFindings = useMemo(() => {
-    return findings.filter(f => {
-      if (filterSeverity !== "all" && f.severity !== filterSeverity) return false;
-      if (filterReview === "pending" && f.reviewStatus !== "pending") return false;
-      if (filterReview === "reviewed" && f.reviewStatus === "pending") return false;
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        return f.controlName.toLowerCase().includes(query) || f.controlId.toLowerCase().includes(query);
-      }
-      return true;
-    });
-  }, [findings, filterSeverity, filterReview, searchQuery]);
-
   const reviewedCount = findings.filter(f => f.reviewStatus !== "pending").length;
-
-  const groupedFindings = useMemo(() => {
-    return {
-      high: filteredFindings.filter(f => f.severity === "high"),
-      medium: filteredFindings.filter(f => f.severity === "medium"),
-      low: filteredFindings.filter(f => f.severity === "low"),
-    };
-  }, [filteredFindings]);
 
   // HANDLERS
   const autoSelectNext = (currentFindings: Finding[], currentSelectedId: string) => {
@@ -170,24 +170,42 @@ export default function FindingsReviewPage() {
     }
   };
 
-  const handleAccept = (id: string) => {
-    setFindings(prev => {
-      const next = prev.map(f => f.id === id ? { ...f, reviewStatus: "accepted" as const } : f);
-      autoSelectNext(next, id);
-      return next;
-    });
+  const handleAccept = async (id: string) => {
+    try {
+      await updateFinding(id, { reviewStatus: "accepted" });
+      setFindings(prev => {
+        const next = prev.map(f => f.id === id ? { ...f, reviewStatus: "accepted" as const } : f);
+        autoSelectNext(next, id);
+        return next;
+      });
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update finding status");
+    }
   };
 
-  const handleReject = (id: string) => {
-    setFindings(prev => {
-      const next = prev.map(f => f.id === id ? { ...f, reviewStatus: "rejected" as const } : f);
-      autoSelectNext(next, id);
-      return next;
-    });
+  const handleReject = async (id: string) => {
+    try {
+      await updateFinding(id, { reviewStatus: "rejected" });
+      setFindings(prev => {
+        const next = prev.map(f => f.id === id ? { ...f, reviewStatus: "rejected" as const } : f);
+        autoSelectNext(next, id);
+        return next;
+      });
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update finding status");
+    }
   };
 
-  const handleUndo = (id: string) => {
-    setFindings(prev => prev.map(f => f.id === id ? { ...f, reviewStatus: "pending" as const, auditorComment: undefined } : f));
+  const handleUndo = async (id: string) => {
+    try {
+      await updateFinding(id, { reviewStatus: "pending" });
+      setFindings(prev => prev.map(f => f.id === id ? { ...f, reviewStatus: "pending" as const, auditorComment: undefined } : f));
+    } catch (err) {
+      console.error(err);
+      alert("Failed to undo review status");
+    }
   };
 
   const handleModifyOpen = () => {
@@ -195,18 +213,28 @@ export default function FindingsReviewPage() {
     setShowModifyDrawer(true);
   };
 
-  const handleModifySave = () => {
-    setFindings(prev => {
-      const next = prev.map(f => f.id === selectedId ? { 
-        ...f, 
-        reviewStatus: "modified" as const, 
+  const handleModifySave = async () => {
+    try {
+      await updateFinding(selectedId, {
+        reviewStatus: "modified",
         severity: modifyDraft.severity,
-        auditorComment: modifyDraft.comment
-      } : f);
-      autoSelectNext(next, selectedId);
-      return next;
-    });
-    setShowModifyDrawer(false);
+        comment: modifyDraft.comment
+      });
+      setFindings(prev => {
+        const next = prev.map(f => f.id === selectedId ? { 
+          ...f, 
+          reviewStatus: "modified" as const, 
+          severity: modifyDraft.severity,
+          auditorComment: modifyDraft.comment
+        } : f);
+        autoSelectNext(next, selectedId);
+        return next;
+      });
+      setShowModifyDrawer(false);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save modified finding");
+    }
   };
 
   // RENDER HELPERS
@@ -223,7 +251,7 @@ export default function FindingsReviewPage() {
   };
 
   return (
-    <div className="min-h-screen bg-transparent flex flex-col overflow-hidden h-screen">
+    <div className="bg-transparent flex flex-col overflow-hidden h-[calc(100vh-160px)] border border-gray-200 rounded-2xl shadow-sm">
       
       {/* TOP BAR */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shrink-0">
@@ -238,15 +266,15 @@ export default function FindingsReviewPage() {
           </div>
         </div>
         <button 
-          onClick={() => navigate("/auditor/report")}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          onClick={() => navigate(`/auditor/report?auditId=${auditId}`)}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
         >
           View Report →
         </button>
       </div>
 
       {/* MAIN CONTENT */}
-      <div className="flex h-[calc(100vh-73px)] w-full">
+      <div className="flex flex-1 overflow-hidden w-full">
         
         {/* LEFT PANEL */}
         <div className="w-80 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col h-full z-10">
@@ -334,9 +362,9 @@ export default function FindingsReviewPage() {
         </div>
 
         {/* RIGHT PANEL */}
-        <div className="flex-1 overflow-y-auto bg-white flex flex-col relative h-full">
+        <div className="flex-1 bg-white flex flex-col relative h-full overflow-hidden">
           
-          <div className="flex-1 overflow-y-auto pb-24">
+          <div className="flex-1 overflow-y-auto pb-6">
             {/* FINDING HEADER */}
             <div className="px-6 pt-6 pb-4 border-b border-gray-100">
               <div className="flex items-center gap-3">
@@ -484,24 +512,24 @@ export default function FindingsReviewPage() {
           </div>
 
           {/* ACTION BUTTONS (Sticky Bottom) */}
-          <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-6 py-4 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)]">
+          <div className="bg-white border-t border-gray-100 px-6 py-4 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)] shrink-0 z-10 w-full">
             {selectedFinding.reviewStatus === "pending" ? (
               <div className="flex gap-3 max-w-4xl">
                 <button 
                   onClick={() => handleAccept(selectedFinding.id)}
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold py-3 rounded-xl transition-colors shadow-sm"
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold py-3 rounded-xl transition-colors shadow-sm cursor-pointer"
                 >
                   ✓ Accept Finding
                 </button>
                 <button 
                   onClick={() => handleReject(selectedFinding.id)}
-                  className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-sm font-semibold py-3 rounded-xl transition-colors"
+                  className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-sm font-semibold py-3 rounded-xl transition-colors cursor-pointer"
                 >
                   ✗ Reject
                 </button>
                 <button 
                   onClick={handleModifyOpen}
-                  className="flex-1 bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 text-sm font-semibold py-3 rounded-xl transition-colors"
+                  className="flex-1 bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 text-sm font-semibold py-3 rounded-xl transition-colors cursor-pointer"
                 >
                   ~ Modify
                 </button>
@@ -515,7 +543,7 @@ export default function FindingsReviewPage() {
                 </div>
                 <button 
                   onClick={() => handleUndo(selectedFinding.id)}
-                  className="text-sm text-indigo-600 font-semibold hover:text-indigo-800 underline"
+                  className="text-sm text-indigo-600 font-semibold hover:text-indigo-800 underline cursor-pointer"
                 >
                   Undo Review
                 </button>

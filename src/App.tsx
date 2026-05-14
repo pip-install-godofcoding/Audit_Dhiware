@@ -13,6 +13,7 @@ import AuditSetupPage from "./features/auditor/AuditSetupPage";
 import AuditProgressPage from "./features/auditor/AuditProgressPage";
 import FindingsReviewPage from "./features/auditor/FindingsReviewPage";
 import ReportViewerPage from "./features/auditor/ReportViewerPage";
+import ChatWorkspacePage from "./features/auditor/ChatWorkspacePage";
 import AuditorChatbot from "./features/auditor/components/AuditorChatbot";
 
 const Placeholder = ({ title }: { title: string }) => (
@@ -74,6 +75,7 @@ export default function App() {
     <Route path="/auditor/progress" element={<AuditProgressPage />} />
     <Route path="/auditor/findings" element={<FindingsReviewPage />} />
     <Route path="/auditor/report" element={<ReportViewerPage />} />
+    <Route path="/auditor/chat" element={<ChatWorkspacePage />} />
   </Route>
 
   {/* FALLBACK */}

@@ -43,7 +43,7 @@ CREATE TABLE document_chunks (
     document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
     chunk_text TEXT NOT NULL,
-    embedding vector(1024),
+    embedding vector(384),
     section_ref TEXT,
     page_number INTEGER,
     created_at TIMESTAMPTZ DEFAULT NOW(),
